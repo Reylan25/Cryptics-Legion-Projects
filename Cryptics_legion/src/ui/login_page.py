@@ -1,0 +1,254 @@
+# src/ui/login_page.py
+import flet as ft
+from core import auth
+
+
+def create_login_view(page: ft.Page, on_success, show_register, show_onboarding, toast):
+    """
+    Returns a callable that will render the login view when called.
+    on_success(user_id) -> called when login succeeds.
+    show_register() -> callable to show register page
+    show_onboarding() -> callable to show onboarding
+    toast(message, color) -> helper to show snackbars
+    """
+    
+    # Error message text
+    error_text = ft.Text("", color="#EF4444", size=12, visible=False)
+    
+    # Loading state
+    loading = {"value": False}
+    
+    username_field = ft.TextField(
+        hint_text="Enter your username",
+        hint_style=ft.TextStyle(color="#6B7280"),
+        border="none",
+        color="white",
+        width=280,
+        prefix_icon=ft.Icons.PERSON_OUTLINE,
+        cursor_color="white",
+    )
+    
+    username_error = ft.Text("", color="#EF4444", size=11, visible=False)
+
+    password_field = ft.TextField(
+        hint_text="Enter your password",
+        hint_style=ft.TextStyle(color="#6B7280"),
+        border="none",
+        color="white",
+        width=220,
+        password=True,
+        prefix_icon=ft.Icons.LOCK_OUTLINE,
+        cursor_color="white",
+    )
+    
+    password_error = ft.Text("", color="#EF4444", size=11, visible=False)
+
+    password_eye = ft.IconButton(icon=ft.Icons.VISIBILITY_OFF, icon_color="white", icon_size=20)
+
+    def toggle_password(e):
+        password_field.password = not password_field.password
+        password_eye.icon = ft.Icons.VISIBILITY if not password_field.password else ft.Icons.VISIBILITY_OFF
+        page.update()
+
+    password_eye.on_click = toggle_password
+    
+    def clear_errors():
+        """Clear all error messages."""
+        username_error.visible = False
+        password_error.visible = False
+        error_text.visible = False
+        page.update()
+    
+    def show_error(message):
+        """Show main error message."""
+        error_text.value = message
+        error_text.visible = True
+        page.update()
+
+    def do_login(e=None):
+        # Clear previous errors
+        clear_errors()
+        
+        u = username_field.value.strip() if username_field.value else ""
+        p = password_field.value.strip() if password_field.value else ""
+        
+        has_error = False
+        
+        # Validate username
+        if not u:
+            username_error.value = "Username is required"
+            username_error.visible = True
+            has_error = True
+        elif len(u) < 3:
+            username_error.value = "Username must be at least 3 characters"
+            username_error.visible = True
+            has_error = True
+        
+        # Validate password
+        if not p:
+            password_error.value = "Password is required"
+            password_error.visible = True
+            has_error = True
+        elif len(p) < 4:
+            password_error.value = "Password must be at least 4 characters"
+            password_error.visible = True
+            has_error = True
+        
+        if has_error:
+            page.update()
+            return
+        
+        # Show loading state
+        login_btn.disabled = True
+        login_btn.text = "Logging in..."
+        page.update()
+        
+        # Attempt login
+        uid = auth.login_user(u, p)
+        
+        if uid:
+            username_field.value = ""
+            password_field.value = ""
+            login_btn.disabled = False
+            login_btn.text = "Login"
+            toast("Welcome back! 🎉", "#2E7D32")
+            on_success(uid)
+        else:
+            login_btn.disabled = False
+            login_btn.text = "Login"
+            show_error("Invalid username or password. Please try again.")
+            # Shake effect simulation - show error prominently
+            toast("Login failed. Check your credentials.", "#b71c1c")
+
+    def show_view():
+        page.clean()
+        
+        # Reset fields
+        username_field.value = ""
+        password_field.value = ""
+        username_error.visible = False
+        password_error.visible = False
+        error_text.visible = False
+        
+        # App logo/icon
+        logo = ft.Container(
+            content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color="#A855F7", size=50),
+            width=80,
+            height=80,
+            border_radius=40,
+            bgcolor="#1a1a3e",
+            alignment=ft.alignment.center,
+        )
+        
+        username_cont = ft.Container(
+            content=ft.Column([
+                ft.Row([username_field], expand=True),
+                username_error,
+            ], spacing=4),
+            border=ft.Border(bottom=ft.BorderSide(1, "#3d3d5c")),
+            padding=ft.padding.only(bottom=6),
+            width=300
+        )
+        
+        password_cont = ft.Container(
+            content=ft.Column([
+                ft.Row([password_field, password_eye], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                password_error,
+            ], spacing=4),
+            border=ft.Border(bottom=ft.BorderSide(1, "#3d3d5c")),
+            padding=ft.padding.only(bottom=6),
+            width=300
+        )
+
+        # Styled login button
+        nonlocal login_btn
+        login_btn = ft.ElevatedButton(
+            "Login",
+            width=300, 
+            height=50, 
+            bgcolor="#6366F1", 
+            color="white",
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
+            on_click=do_login
+        )
+        
+        # Forgot password link
+        forgot_password = ft.TextButton(
+            "Forgot Password?",
+            style=ft.ButtonStyle(color="#9CA3AF"),
+            on_click=lambda e: toast("Password reset feature coming soon!", "#6366F1"),
+        )
+
+        page.add(
+            ft.Container(
+                expand=True,
+                gradient=ft.RadialGradient(
+                    center=ft.alignment.center,
+                    radius=0.8,
+                    colors=["#0a4d68", "#1a1a3e", "#12002e"]
+                ),
+                padding=20,
+                content=ft.Column([
+                    ft.Container(height=30),
+                    logo,
+                    ft.Container(height=15),
+                    ft.Text("Welcome Back!", size=28, weight=ft.FontWeight.BOLD, color="white"),
+                    ft.Container(height=4),
+                    ft.Text("Sign in to continue tracking your expenses", size=13, color="#9CA3AF"),
+                    ft.Container(height=25),
+                    
+                    # Error message container
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.ERROR_OUTLINE, color="#EF4444", size=16),
+                            error_text,
+                        ], spacing=8),
+                        visible=True,
+                        padding=ft.padding.only(bottom=10),
+                    ),
+                    
+                    username_cont,
+                    ft.Container(height=12),
+                    password_cont,
+                    ft.Container(height=8),
+                    
+                    # Forgot password aligned right
+                    ft.Container(
+                        content=forgot_password,
+                        width=300,
+                        alignment=ft.alignment.center_right,
+                    ),
+                    
+                    ft.Container(height=18),
+                    login_btn,
+                    ft.Container(height=18),
+                    
+                    # Divider with "or"
+                    ft.Row([
+                        ft.Container(height=1, width=100, bgcolor="#3d3d5c"),
+                        ft.Text("  or  ", color="#6B7280", size=12),
+                        ft.Container(height=1, width=100, bgcolor="#3d3d5c"),
+                    ], alignment=ft.MainAxisAlignment.CENTER),
+                    
+                    ft.Container(height=18),
+                    
+                    # Sign up link
+                    ft.Row([
+                        ft.Text("Don't have an account?", color="#9CA3AF", size=14),
+                        ft.TextButton(
+                            "Sign Up", 
+                            on_click=lambda e: show_register(), 
+                            style=ft.ButtonStyle(color="#A855F7")
+                        )
+                    ], alignment=ft.MainAxisAlignment.CENTER),
+                    
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                alignment=ft.alignment.top_center
+            )
+        )
+        page.update()
+    
+    # Initialize login_btn
+    login_btn = None
+
+    return show_view
