@@ -2,43 +2,19 @@
 import flet as ft
 from datetime import datetime
 from core import db
+from utils.brand_recognition import identify_brand, get_icon_for_category
 
 
 def get_category_icon(category: str):
-    """Returns an appropriate icon for the category."""
-    category_lower = category.lower()
-    
-    icon_map = {
-        "food": ft.Icons.RESTAURANT,
-        "transport": ft.Icons.DIRECTIONS_CAR,
-        "uber": ft.Icons.LOCAL_TAXI,
-        "shopping": ft.Icons.SHOPPING_BAG,
-        "entertainment": ft.Icons.MOVIE,
-        "bills": ft.Icons.RECEIPT,
-        "health": ft.Icons.LOCAL_HOSPITAL,
-        "education": ft.Icons.SCHOOL,
-        "salary": ft.Icons.ACCOUNT_BALANCE_WALLET,
-        "income": ft.Icons.TRENDING_UP,
-        "electronics": ft.Icons.DEVICES,
-        "clothing": ft.Icons.CHECKROOM,
-        "groceries": ft.Icons.LOCAL_GROCERY_STORE,
-        "utilities": ft.Icons.BOLT,
-        "rent": ft.Icons.HOME,
-        "travel": ft.Icons.FLIGHT,
-        "fitness": ft.Icons.FITNESS_CENTER,
-        "subscription": ft.Icons.SUBSCRIPTIONS,
-        "gift": ft.Icons.CARD_GIFTCARD,
-        "insurance": ft.Icons.SECURITY,
-        "investment": ft.Icons.SHOW_CHART,
-        "savings": ft.Icons.SAVINGS,
-        "other": ft.Icons.CATEGORY,
-    }
-    
-    for key, icon in icon_map.items():
-        if key in category_lower:
-            return icon
-    
-    return ft.Icons.PAYMENTS
+    """Returns an appropriate icon for the category using AI brand recognition."""
+    result = identify_brand(category)
+    return result["icon"]
+
+
+def get_category_color(category: str):
+    """Returns an appropriate color for the category using AI brand recognition."""
+    result = identify_brand(category)
+    return result["color"]
 
 
 def format_date(date_str: str) -> str:
@@ -115,18 +91,19 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
             page.update()
         
         icon = get_category_icon(category)
+        icon_color = get_category_color(category)
         display_name = description if description else category
         
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    # Icon
+                    # Icon with brand color
                     ft.Container(
                         content=ft.Icon(icon, color="white", size=22),
                         width=44,
                         height=44,
                         border_radius=22,
-                        bgcolor="#1F2937",
+                        bgcolor=icon_color,
                         alignment=ft.alignment.center,
                     ),
                     # Details

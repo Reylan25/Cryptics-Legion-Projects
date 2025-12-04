@@ -1,13 +1,23 @@
 # src/ui/profile_page.py
 import flet as ft
 from core import db
+from core.theme import ThemeManager, get_theme
 
 
-def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callback):
-    """Create the profile/settings page."""
+def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callback, show_account_settings=None, refresh_app=None):
+    """Create the profile/settings page with theme support."""
     
     def show_view():
         page.clean()
+        
+        # Get current theme
+        theme = get_theme()
+        
+        # Get user profile from database
+        user_profile = db.get_user_profile(state["user_id"])
+        display_name = user_profile.get("full_name", "") if user_profile else ""
+        if not display_name:
+            display_name = user_profile.get("username", f"User #{state['user_id']}") if user_profile else f"User #{state['user_id']}"
         
         # Get user stats
         total_spent = db.total_expenses_by_user(state["user_id"])
@@ -19,10 +29,10 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
             controls=[
                 ft.IconButton(
                     icon=ft.Icons.ARROW_BACK,
-                    icon_color="white",
+                    icon_color=theme.text_primary,
                     on_click=lambda e: go_back(),
                 ),
-                ft.Text("Profile", size=20, weight=ft.FontWeight.BOLD, color="white"),
+                ft.Text("Profile", size=20, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                 ft.Container(width=48),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -34,13 +44,13 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
                 controls=[
                     ft.CircleAvatar(
                         foreground_image_src="/assets/icon.png",
-                        bgcolor="#4F46E5",
+                        bgcolor=theme.accent_primary,
                         content=ft.Icon(ft.Icons.PERSON, color="white", size=40),
                         radius=50,
                     ),
                     ft.Container(height=12),
-                    ft.Text(f"User #{state['user_id']}", size=20, weight=ft.FontWeight.BOLD, color="white"),
-                    ft.Text("Smart Expense Tracker", size=14, color="#9CA3AF"),
+                    ft.Text(display_name, size=20, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ft.Text("Smart Expense Tracker", size=14, color=theme.text_secondary),
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -54,84 +64,147 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Text(f"₱{total_spent:,.0f}", size=18, weight=ft.FontWeight.BOLD, color="white"),
-                            ft.Text("Total Spent", size=11, color="#9CA3AF"),
+                            ft.Text(f"₱{total_spent:,.0f}", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ft.Text("Total Spent", size=11, color=theme.text_secondary),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=4,
                     ),
                     padding=12,
                     border_radius=12,
-                    bgcolor="#1a1a2e",
+                    bgcolor=theme.bg_card,
+                    border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
                     expand=True,
                 ),
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Text(str(transactions), size=18, weight=ft.FontWeight.BOLD, color="white"),
-                            ft.Text("Transactions", size=11, color="#9CA3AF"),
+                            ft.Text(str(transactions), size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ft.Text("Transactions", size=11, color=theme.text_secondary),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=4,
                     ),
                     padding=12,
                     border_radius=12,
-                    bgcolor="#1a1a2e",
+                    bgcolor=theme.bg_card,
+                    border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
                     expand=True,
                 ),
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Text(str(categories), size=18, weight=ft.FontWeight.BOLD, color="white"),
-                            ft.Text("Categories", size=11, color="#9CA3AF"),
+                            ft.Text(str(categories), size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ft.Text("Categories", size=11, color=theme.text_secondary),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         spacing=4,
                     ),
                     padding=12,
                     border_radius=12,
-                    bgcolor="#1a1a2e",
+                    bgcolor=theme.bg_card,
+                    border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
                     expand=True,
                 ),
             ],
             spacing=8,
         )
         
+        # Theme Toggle Switch
+        def toggle_theme(e):
+            ThemeManager.toggle_theme()
+            # Refresh the page to apply theme
+            if refresh_app:
+                refresh_app()
+            else:
+                show_view()  # Re-render this page with new theme
+        
+        is_dark = ThemeManager.is_dark_mode()
+        
+        # Theme toggle item (special styling)
+        theme_toggle = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Container(
+                        content=ft.Icon(
+                            ft.Icons.DARK_MODE if is_dark else ft.Icons.LIGHT_MODE, 
+                            color=theme.accent_primary, 
+                            size=22
+                        ),
+                        width=44,
+                        height=44,
+                        border_radius=12,
+                        bgcolor=theme.bg_elevated,
+                        alignment=ft.alignment.center,
+                    ),
+                    ft.Column(
+                        controls=[
+                            ft.Text("Theme", size=14, weight=ft.FontWeight.W_500, color=theme.text_primary),
+                            ft.Text(
+                                "Dark Mode" if is_dark else "Light Mode", 
+                                size=12, 
+                                color=theme.text_muted
+                            ),
+                        ],
+                        spacing=2,
+                        expand=True,
+                    ),
+                    ft.Switch(
+                        value=is_dark,
+                        active_color=theme.accent_primary,
+                        active_track_color=theme.accent_bg if theme.is_dark else theme.accent_light,
+                        inactive_thumb_color=theme.text_muted,
+                        inactive_track_color=theme.border_primary,
+                        on_change=toggle_theme,
+                    ),
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=12,
+            border_radius=12,
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
+        )
+        
         # Menu items
-        def create_menu_item(icon, title, subtitle=None, on_click=None, color="white"):
+        def create_menu_item(icon, title, subtitle=None, on_click=None, color=None):
+            item_color = color if color else theme.text_primary
             return ft.Container(
                 content=ft.Row(
                     controls=[
                         ft.Container(
-                            content=ft.Icon(icon, color=color, size=22),
+                            content=ft.Icon(icon, color=item_color, size=22),
                             width=44,
                             height=44,
                             border_radius=12,
-                            bgcolor="#1F2937",
+                            bgcolor=theme.bg_elevated,
                             alignment=ft.alignment.center,
                         ),
                         ft.Column(
                             controls=[
-                                ft.Text(title, size=14, weight=ft.FontWeight.W_500, color=color),
-                                ft.Text(subtitle, size=12, color="#6B7280") if subtitle else ft.Container(),
+                                ft.Text(title, size=14, weight=ft.FontWeight.W_500, color=item_color),
+                                ft.Text(subtitle, size=12, color=theme.text_muted) if subtitle else ft.Container(),
                             ],
                             spacing=2,
                             expand=True,
                         ),
-                        ft.Icon(ft.Icons.CHEVRON_RIGHT, color="#6B7280", size=20),
+                        ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=20),
                     ],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
                 padding=12,
                 border_radius=12,
-                bgcolor="#1a1a2e",
+                bgcolor=theme.bg_card,
+                border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
                 on_click=on_click,
                 ink=True,
             )
         
         menu_section = ft.Column(
             controls=[
-                create_menu_item(ft.Icons.PERSON_OUTLINE, "Account Settings", "Manage your account"),
+                create_menu_item(ft.Icons.PERSON_OUTLINE, "Account Settings", "Manage your account", on_click=lambda e: show_account_settings() if show_account_settings else None),
+                ft.Container(height=8),
+                theme_toggle,  # Theme toggle in settings
                 ft.Container(height=8),
                 create_menu_item(ft.Icons.NOTIFICATIONS_OUTLINED, "Notifications", "Manage alerts"),
                 ft.Container(height=8),
@@ -148,22 +221,22 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
             content=ft.Row(
                 controls=[
                     ft.Container(
-                        content=ft.Icon(ft.Icons.LOGOUT, color="#EF4444", size=22),
+                        content=ft.Icon(ft.Icons.LOGOUT, color=theme.error, size=22),
                         width=44,
                         height=44,
                         border_radius=12,
-                        bgcolor="#1F2937",
+                        bgcolor=theme.bg_elevated,
                         alignment=ft.alignment.center,
                     ),
-                    ft.Text("Logout", size=14, weight=ft.FontWeight.W_500, color="#EF4444", expand=True),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color="#6B7280", size=20),
+                    ft.Text("Logout", size=14, weight=ft.FontWeight.W_500, color=theme.error, expand=True),
+                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=20),
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             padding=12,
             border_radius=12,
-            bgcolor="#1a1a2e",
-            border=ft.border.all(1, "#EF4444"),
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.error),
             on_click=lambda e: logout_callback(),
             ink=True,
         )
@@ -175,7 +248,7 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
                 gradient=ft.LinearGradient(
                     begin=ft.alignment.top_center,
                     end=ft.alignment.bottom_center,
-                    colors=["#0f0f23", "#0a0a14"],
+                    colors=[theme.gradient_start, theme.gradient_end],
                 ),
                 padding=20,
                 content=ft.Column(
@@ -186,7 +259,7 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
                         ft.Container(height=16),
                         stats_row,
                         ft.Container(height=24),
-                        ft.Text("Settings", size=16, weight=ft.FontWeight.W_600, color="white"),
+                        ft.Text("Settings", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
                         ft.Container(height=12),
                         menu_section,
                         ft.Container(height=24),

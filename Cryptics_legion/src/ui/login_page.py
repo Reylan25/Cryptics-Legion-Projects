@@ -1,6 +1,7 @@
 # src/ui/login_page.py
 import flet as ft
 from core import auth
+from core.theme import get_theme
 
 
 def create_login_view(page: ft.Page, on_success, show_register, show_onboarding, toast):
@@ -12,7 +13,8 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
     toast(message, color) -> helper to show snackbars
     """
     
-    # Error message text
+    # Error message text with icon container
+    error_icon = ft.Icon(ft.Icons.ERROR_OUTLINE, color="#EF4444", size=16, visible=False)
     error_text = ft.Text("", color="#EF4444", size=12, visible=False)
     
     # Loading state
@@ -57,12 +59,14 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
         username_error.visible = False
         password_error.visible = False
         error_text.visible = False
+        error_icon.visible = False
         page.update()
     
     def show_error(message):
         """Show main error message."""
         error_text.value = message
         error_text.visible = True
+        error_icon.visible = True
         page.update()
 
     def do_login(e=None):
@@ -120,8 +124,15 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
             # Shake effect simulation - show error prominently
             toast("Login failed. Check your credentials.", "#b71c1c")
 
+    # Add on_submit handlers for Enter key to trigger login
+    username_field.on_submit = do_login
+    password_field.on_submit = do_login
+
     def show_view():
         page.clean()
+        
+        # Get current theme
+        theme = get_theme()
         
         # Reset fields
         username_field.value = ""
@@ -129,14 +140,22 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
         username_error.visible = False
         password_error.visible = False
         error_text.visible = False
+        error_icon.visible = False
+        
+        # Update field colors based on theme
+        username_field.color = theme.text_primary
+        username_field.hint_style = ft.TextStyle(color=theme.text_muted)
+        password_field.color = theme.text_primary
+        password_field.hint_style = ft.TextStyle(color=theme.text_muted)
+        password_eye.icon_color = theme.text_primary
         
         # App logo/icon
         logo = ft.Container(
-            content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color="#A855F7", size=50),
+            content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color=theme.accent_secondary, size=50),
             width=80,
             height=80,
             border_radius=40,
-            bgcolor="#1a1a3e",
+            bgcolor=theme.bg_card,
             alignment=ft.alignment.center,
         )
         
@@ -145,7 +164,7 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
                 ft.Row([username_field], expand=True),
                 username_error,
             ], spacing=4),
-            border=ft.Border(bottom=ft.BorderSide(1, "#3d3d5c")),
+            border=ft.Border(bottom=ft.BorderSide(1, theme.border_primary)),
             padding=ft.padding.only(bottom=6),
             width=300
         )
@@ -155,7 +174,7 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
                 ft.Row([password_field, password_eye], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 password_error,
             ], spacing=4),
-            border=ft.Border(bottom=ft.BorderSide(1, "#3d3d5c")),
+            border=ft.Border(bottom=ft.BorderSide(1, theme.border_primary)),
             padding=ft.padding.only(bottom=6),
             width=300
         )
@@ -166,7 +185,7 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
             "Login",
             width=300, 
             height=50, 
-            bgcolor="#6366F1", 
+            bgcolor=theme.accent_primary, 
             color="white",
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
             on_click=do_login
@@ -175,8 +194,8 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
         # Forgot password link
         forgot_password = ft.TextButton(
             "Forgot Password?",
-            style=ft.ButtonStyle(color="#9CA3AF"),
-            on_click=lambda e: toast("Password reset feature coming soon!", "#6366F1"),
+            style=ft.ButtonStyle(color=theme.text_secondary),
+            on_click=lambda e: toast("Password reset feature coming soon!", theme.accent_primary),
         )
 
         page.add(
@@ -185,25 +204,24 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
                 gradient=ft.RadialGradient(
                     center=ft.alignment.center,
                     radius=0.8,
-                    colors=["#0a4d68", "#1a1a3e", "#12002e"]
+                    colors=[theme.bg_gradient_start, theme.bg_primary, theme.bg_gradient_end]
                 ),
                 padding=20,
                 content=ft.Column([
                     ft.Container(height=30),
                     logo,
                     ft.Container(height=15),
-                    ft.Text("Welcome Back!", size=28, weight=ft.FontWeight.BOLD, color="white"),
+                    ft.Text("Welcome Back!", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                     ft.Container(height=4),
-                    ft.Text("Sign in to continue tracking your expenses", size=13, color="#9CA3AF"),
+                    ft.Text("Sign in to continue tracking your expenses", size=13, color=theme.text_secondary),
                     ft.Container(height=25),
                     
                     # Error message container
                     ft.Container(
                         content=ft.Row([
-                            ft.Icon(ft.Icons.ERROR_OUTLINE, color="#EF4444", size=16),
+                            error_icon,
                             error_text,
                         ], spacing=8),
-                        visible=True,
                         padding=ft.padding.only(bottom=10),
                     ),
                     
@@ -225,20 +243,20 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
                     
                     # Divider with "or"
                     ft.Row([
-                        ft.Container(height=1, width=100, bgcolor="#3d3d5c"),
-                        ft.Text("  or  ", color="#6B7280", size=12),
-                        ft.Container(height=1, width=100, bgcolor="#3d3d5c"),
+                        ft.Container(height=1, width=100, bgcolor=theme.border_primary),
+                        ft.Text("  or  ", color=theme.text_muted, size=12),
+                        ft.Container(height=1, width=100, bgcolor=theme.border_primary),
                     ], alignment=ft.MainAxisAlignment.CENTER),
                     
                     ft.Container(height=18),
                     
                     # Sign up link
                     ft.Row([
-                        ft.Text("Don't have an account?", color="#9CA3AF", size=14),
+                        ft.Text("Don't have an account?", color=theme.text_secondary, size=14),
                         ft.TextButton(
                             "Sign Up", 
                             on_click=lambda e: show_register(), 
-                            style=ft.ButtonStyle(color="#A855F7")
+                            style=ft.ButtonStyle(color=theme.accent_secondary)
                         )
                     ], alignment=ft.MainAxisAlignment.CENTER),
                     

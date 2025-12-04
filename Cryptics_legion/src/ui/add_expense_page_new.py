@@ -2,6 +2,7 @@
 import flet as ft
 from datetime import datetime
 from core import db
+from utils.brand_recognition import identify_brand, get_brand_suggestions
 
 
 # Category options
@@ -117,10 +118,15 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
         def show_category_picker(e):
             """Show category selection dialog."""
             def select_cat(cat):
-                selected_category['value'] = cat
-                category_text.value = cat
-                page.close(dlg)
-                page.update()
+                if cat == "Other":
+                    # Show custom category input dialog
+                    page.close(dlg)
+                    show_custom_category_dialog()
+                else:
+                    selected_category['value'] = cat
+                    category_text.value = cat
+                    page.close(dlg)
+                    page.update()
             
             dlg = ft.AlertDialog(
                 modal=True,
@@ -138,6 +144,229 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                 ),
             )
             page.open(dlg)
+        
+        def show_custom_category_dialog():
+            """Show dialog to input custom category with AI brand recognition."""
+            # Preview state
+            preview_state = {"icon": ft.Icons.CATEGORY, "color": "#7C3AED", "category": "", "is_brand": False}
+            
+            # Preview icon container
+            preview_icon = ft.Container(
+                content=ft.Icon(ft.Icons.CATEGORY, color="white", size=28),
+                width=56,
+                height=56,
+                border_radius=28,
+                bgcolor="#7C3AED",
+                alignment=ft.alignment.center,
+            )
+            
+            # Preview category text
+            preview_text = ft.Text("Type a brand or category...", size=14, color="#aaaacc", italic=True)
+            
+            # AI detection badge
+            ai_badge = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.AUTO_AWESOME, color="#FFD700", size=14),
+                        ft.Text("AI Detected", size=11, color="#FFD700", weight=ft.FontWeight.BOLD),
+                    ],
+                    spacing=4,
+                ),
+                visible=False,
+                padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                border_radius=12,
+                bgcolor="#2d2d5a",
+            )
+            
+            # Suggestions container
+            suggestions_column = ft.Column(controls=[], spacing=4, visible=False)
+            
+            def update_preview(e):
+                """Update preview based on input - AI brand recognition."""
+                input_value = e.control.value.strip() if e.control.value else ""
+                
+                if input_value:
+                    # Use AI brand recognition
+                    result = identify_brand(input_value)
+                    preview_state["icon"] = result["icon"]
+                    preview_state["color"] = result["color"]
+                    preview_state["category"] = result["category"]
+                    preview_state["is_brand"] = result["is_brand"]
+                    preview_state["display_name"] = result["display_name"]
+                    
+                    # Update preview icon
+                    preview_icon.content = ft.Icon(result["icon"], color="white", size=28)
+                    preview_icon.bgcolor = result["color"]
+                    
+                    # Update preview text
+                    if result["is_brand"]:
+                        preview_text.value = f"✓ {result['display_name']} → {result['category']}"
+                        preview_text.color = "#4ADE80"
+                        preview_text.italic = False
+                        ai_badge.visible = True
+                    else:
+                        preview_text.value = f"Category: {result['display_name']}"
+                        preview_text.color = "#aaaacc"
+                        preview_text.italic = False
+                        ai_badge.visible = False
+                    
+                    # Show suggestions
+                    suggestions = get_brand_suggestions(input_value, limit=4)
+                    if suggestions and len(input_value) >= 2:
+                        suggestions_column.controls.clear()
+                        for suggestion in suggestions:
+                            if suggestion.lower() != input_value.lower():
+                                sug_result = identify_brand(suggestion)
+                                suggestions_column.controls.append(
+                                    ft.Container(
+                                        content=ft.Row(
+                                            controls=[
+                                                ft.Container(
+                                                    content=ft.Icon(sug_result["icon"], color="white", size=16),
+                                                    width=28,
+                                                    height=28,
+                                                    border_radius=14,
+                                                    bgcolor=sug_result["color"],
+                                                    alignment=ft.alignment.center,
+                                                ),
+                                                ft.Text(suggestion, color="white", size=13),
+                                            ],
+                                            spacing=10,
+                                        ),
+                                        padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                                        border_radius=8,
+                                        bgcolor="#1a1a3e",
+                                        on_click=lambda e, s=suggestion: select_suggestion(s),
+                                        ink=True,
+                                    )
+                                )
+                        suggestions_column.visible = len(suggestions_column.controls) > 0
+                    else:
+                        suggestions_column.visible = False
+                else:
+                    preview_icon.content = ft.Icon(ft.Icons.CATEGORY, color="white", size=28)
+                    preview_icon.bgcolor = "#7C3AED"
+                    preview_text.value = "Type a brand or category..."
+                    preview_text.color = "#aaaacc"
+                    preview_text.italic = True
+                    ai_badge.visible = False
+                    suggestions_column.visible = False
+                
+                page.update()
+            
+            def select_suggestion(suggestion):
+                """Select a brand suggestion."""
+                custom_category_field.value = suggestion
+                update_preview(type('obj', (object,), {'control': custom_category_field})())
+                page.update()
+            
+            custom_category_field = ft.TextField(
+                hint_text="e.g., Nike, Starbucks, Grab...",
+                hint_style=ft.TextStyle(color="#6666aa"),
+                border_color="#4F46E5",
+                focused_border_color="#7C3AED",
+                bgcolor="#0d1829",
+                color="white",
+                text_size=16,
+                cursor_color="white",
+                content_padding=ft.padding.symmetric(horizontal=15, vertical=12),
+                on_change=update_preview,
+            )
+            
+            def save_custom_category(e):
+                custom_value = custom_category_field.value.strip() if custom_category_field.value else ""
+                if custom_value:
+                    # Use the recognized brand/category info
+                    result = identify_brand(custom_value)
+                    # Store both the display name and category info
+                    selected_category['value'] = result["display_name"]
+                    selected_category['icon'] = result["icon"]
+                    selected_category['color'] = result["color"]
+                    selected_category['detected_category'] = result["category"]
+                    category_text.value = result["display_name"]
+                    page.close(custom_dlg)
+                    
+                    # Show success message for brand detection
+                    if result["is_brand"]:
+                        toast(f"✓ {result['display_name']} recognized as {result['category']}", "#4F46E5")
+                    
+                    page.update()
+                else:
+                    toast("Please enter a category name", "#b71c1c")
+            
+            def cancel_custom(e):
+                page.close(custom_dlg)
+                page.update()
+            
+            custom_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.AUTO_AWESOME, color="#FFD700", size=20),
+                        ft.Text("Smart Category", color="white", weight=ft.FontWeight.BOLD),
+                    ],
+                    spacing=8,
+                ),
+                bgcolor="#1a1a3e",
+                content=ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Text("Enter brand, store, or category:", color="#aaaacc", size=14),
+                            custom_category_field,
+                            # Preview section
+                            ft.Container(
+                                content=ft.Row(
+                                    controls=[
+                                        preview_icon,
+                                        ft.Column(
+                                            controls=[
+                                                ft.Row(
+                                                    controls=[preview_text, ai_badge],
+                                                    spacing=8,
+                                                ),
+                                            ],
+                                            spacing=2,
+                                            expand=True,
+                                        ),
+                                    ],
+                                    spacing=12,
+                                ),
+                                padding=ft.padding.all(12),
+                                border_radius=12,
+                                bgcolor="#0d1829",
+                                margin=ft.margin.only(top=10),
+                            ),
+                            # Suggestions
+                            ft.Container(
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text("Suggestions:", size=12, color="#6666aa"),
+                                        suggestions_column,
+                                    ],
+                                    spacing=6,
+                                ),
+                                visible=True,
+                                margin=ft.margin.only(top=8),
+                            ),
+                        ],
+                        spacing=12,
+                        tight=True,
+                    ),
+                    width=300,
+                    padding=ft.padding.only(top=10),
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=cancel_custom, style=ft.ButtonStyle(color="#aaaacc")),
+                    ft.ElevatedButton(
+                        "Save",
+                        on_click=save_custom_category,
+                        bgcolor="#4F46E5",
+                        color="white",
+                    ),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            page.open(custom_dlg)
         
         def show_payment_picker(e):
             """Show payment method selection dialog."""

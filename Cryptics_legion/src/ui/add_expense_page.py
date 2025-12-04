@@ -2,6 +2,8 @@
 import flet as ft
 from datetime import datetime
 from core import db
+from core.theme import get_theme
+from utils.brand_recognition import identify_brand, get_brand_suggestions
 
 
 # Category options
@@ -40,7 +42,8 @@ CURRENCIES = [
 ]
 
 
-def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
+def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
+                            show_home=None, show_expenses=None, show_wallet=None, show_profile=None):
     """Create the add expense page with modern glass design."""
     
     # State variables
@@ -54,9 +57,34 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
     current_time = now.strftime("%I:%M %p").lower()
     current_date = now.strftime("%b %d, %Y")
     
-    def go_home(e):
-        """Navigate back to home."""
-        go_back()
+    def nav_back(e=None):
+        """Navigate back - defaults to expenses page."""
+        if show_expenses:
+            show_expenses()
+        elif go_back:
+            go_back()
+    
+    def nav_home():
+        """Navigate to home."""
+        if show_home:
+            show_home()
+        elif go_back:
+            go_back()
+    
+    def nav_expenses():
+        """Navigate to expenses."""
+        if show_expenses:
+            show_expenses()
+    
+    def nav_wallet():
+        """Navigate to wallet."""
+        if show_wallet:
+            show_wallet()
+    
+    def nav_profile():
+        """Navigate to profile."""
+        if show_profile:
+            show_profile()
     
     def save_expense(e):
         """Save the expense to database."""
@@ -74,53 +102,71 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             toast("Amount must be greater than 0", "#b71c1c")
             return
         
+        # Get the proper category and description
+        # If brand was detected, use the detected_category, otherwise use the selected value as category
+        expense_category = selected_category.get('detected_category', selected_category['value'])
+        # Use the display name (brand name or custom category) as description
+        expense_description = selected_category['value']
+        
         # Save to database
         db.insert_expense(
             state["user_id"],
             amount,
-            selected_category['value'],
-            f"{selected_payment['value']}",
+            expense_category,
+            expense_description,
             datetime.now().strftime("%Y-%m-%d")
         )
         
         toast("Expense added successfully!", "#2E7D32")
-        go_back()
+        nav_back()
     
     def show_view():
         page.clean()
+        
+        # Get current theme
+        theme = get_theme()
         
         # Amount text field
         amount_field = ft.TextField(
             value=amount_value['value'],
             hint_text="0",
-            hint_style=ft.TextStyle(color="#6666aa"),
+            hint_style=ft.TextStyle(color=theme.text_muted),
             keyboard_type=ft.KeyboardType.NUMBER,
             border="none",
             bgcolor="transparent",
-            color="white",
+            color=theme.text_primary,
             text_size=18,
             content_padding=0,
             width=150,
-            cursor_color="white",
+            cursor_color=theme.text_primary,
             on_change=lambda e: amount_value.update({'value': e.control.value}),
         )
         
         # Category text display
-        category_text = ft.Text(selected_category['value'], size=16, color="white")
+        category_text = ft.Text(selected_category['value'], size=16, color=theme.text_primary)
         
         # Payment text display
-        payment_text = ft.Text(selected_payment['value'], size=16, color="white")
+        payment_text = ft.Text(selected_payment['value'], size=16, color=theme.text_primary)
         
         # Currency text display
-        currency_text = ft.Text(selected_currency['value'], size=16, color="white")
+        currency_text = ft.Text(selected_currency['value'], size=16, color=theme.text_primary)
         
         def show_category_picker(e):
             """Show category selection dialog."""
             def select_cat(cat):
-                selected_category['value'] = cat
-                category_text.value = cat
-                page.close(dlg)
-                page.update()
+                if cat == "Other":
+                    # Show custom category input dialog
+                    page.close(dlg)
+                    show_custom_category_dialog()
+                else:
+                    selected_category['value'] = cat
+                    # Clear any previous brand detection data
+                    selected_category.pop('detected_category', None)
+                    selected_category.pop('icon', None)
+                    selected_category.pop('color', None)
+                    category_text.value = cat
+                    page.close(dlg)
+                    page.update()
             
             dlg = ft.AlertDialog(
                 modal=True,
@@ -138,6 +184,229 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                 ),
             )
             page.open(dlg)
+        
+        def show_custom_category_dialog():
+            """Show dialog to input custom category with AI brand recognition."""
+            # Preview state
+            preview_state = {"icon": ft.Icons.CATEGORY, "color": "#7C3AED", "category": "", "is_brand": False}
+            
+            # Preview icon container
+            preview_icon = ft.Container(
+                content=ft.Icon(ft.Icons.CATEGORY, color="white", size=28),
+                width=56,
+                height=56,
+                border_radius=28,
+                bgcolor="#7C3AED",
+                alignment=ft.alignment.center,
+            )
+            
+            # Preview category text
+            preview_text = ft.Text("Type a brand or category...", size=14, color="#aaaacc", italic=True)
+            
+            # AI detection badge
+            ai_badge = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.AUTO_AWESOME, color="#FFD700", size=14),
+                        ft.Text("AI Detected", size=11, color="#FFD700", weight=ft.FontWeight.BOLD),
+                    ],
+                    spacing=4,
+                ),
+                visible=False,
+                padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                border_radius=12,
+                bgcolor="#2d2d5a",
+            )
+            
+            # Suggestions container
+            suggestions_column = ft.Column(controls=[], spacing=4, visible=False)
+            
+            def update_preview(e):
+                """Update preview based on input - AI brand recognition."""
+                input_value = e.control.value.strip() if e.control.value else ""
+                
+                if input_value:
+                    # Use AI brand recognition
+                    result = identify_brand(input_value)
+                    preview_state["icon"] = result["icon"]
+                    preview_state["color"] = result["color"]
+                    preview_state["category"] = result["category"]
+                    preview_state["is_brand"] = result["is_brand"]
+                    preview_state["display_name"] = result["display_name"]
+                    
+                    # Update preview icon
+                    preview_icon.content = ft.Icon(result["icon"], color="white", size=28)
+                    preview_icon.bgcolor = result["color"]
+                    
+                    # Update preview text
+                    if result["is_brand"]:
+                        preview_text.value = f"✓ {result['display_name']} → {result['category']}"
+                        preview_text.color = "#4ADE80"
+                        preview_text.italic = False
+                        ai_badge.visible = True
+                    else:
+                        preview_text.value = f"Category: {result['display_name']}"
+                        preview_text.color = "#aaaacc"
+                        preview_text.italic = False
+                        ai_badge.visible = False
+                    
+                    # Show suggestions
+                    suggestions = get_brand_suggestions(input_value, limit=4)
+                    if suggestions and len(input_value) >= 2:
+                        suggestions_column.controls.clear()
+                        for suggestion in suggestions:
+                            if suggestion.lower() != input_value.lower():
+                                sug_result = identify_brand(suggestion)
+                                suggestions_column.controls.append(
+                                    ft.Container(
+                                        content=ft.Row(
+                                            controls=[
+                                                ft.Container(
+                                                    content=ft.Icon(sug_result["icon"], color="white", size=16),
+                                                    width=28,
+                                                    height=28,
+                                                    border_radius=14,
+                                                    bgcolor=sug_result["color"],
+                                                    alignment=ft.alignment.center,
+                                                ),
+                                                ft.Text(suggestion, color="white", size=13),
+                                            ],
+                                            spacing=10,
+                                        ),
+                                        padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                                        border_radius=8,
+                                        bgcolor="#1a1a3e",
+                                        on_click=lambda e, s=suggestion: select_suggestion(s),
+                                        ink=True,
+                                    )
+                                )
+                        suggestions_column.visible = len(suggestions_column.controls) > 0
+                    else:
+                        suggestions_column.visible = False
+                else:
+                    preview_icon.content = ft.Icon(ft.Icons.CATEGORY, color="white", size=28)
+                    preview_icon.bgcolor = "#7C3AED"
+                    preview_text.value = "Type a brand or category..."
+                    preview_text.color = "#aaaacc"
+                    preview_text.italic = True
+                    ai_badge.visible = False
+                    suggestions_column.visible = False
+                
+                page.update()
+            
+            def select_suggestion(suggestion):
+                """Select a brand suggestion."""
+                custom_category_field.value = suggestion
+                update_preview(type('obj', (object,), {'control': custom_category_field})())
+                page.update()
+            
+            custom_category_field = ft.TextField(
+                hint_text="e.g., Nike, Starbucks, Grab...",
+                hint_style=ft.TextStyle(color="#6666aa"),
+                border_color="#4F46E5",
+                focused_border_color="#7C3AED",
+                bgcolor="#0d1829",
+                color="white",
+                text_size=16,
+                cursor_color="white",
+                content_padding=ft.padding.symmetric(horizontal=15, vertical=12),
+                on_change=update_preview,
+            )
+            
+            def save_custom_category(e):
+                custom_value = custom_category_field.value.strip() if custom_category_field.value else ""
+                if custom_value:
+                    # Use the recognized brand/category info
+                    result = identify_brand(custom_value)
+                    # Store both the display name and category info
+                    selected_category['value'] = result["display_name"]
+                    selected_category['icon'] = result["icon"]
+                    selected_category['color'] = result["color"]
+                    selected_category['detected_category'] = result["category"]
+                    category_text.value = result["display_name"]
+                    page.close(custom_dlg)
+                    
+                    # Show success message for brand detection
+                    if result["is_brand"]:
+                        toast(f"✓ {result['display_name']} recognized as {result['category']}", "#4F46E5")
+                    
+                    page.update()
+                else:
+                    toast("Please enter a category name", "#b71c1c")
+            
+            def cancel_custom(e):
+                page.close(custom_dlg)
+                page.update()
+            
+            custom_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.AUTO_AWESOME, color="#FFD700", size=20),
+                        ft.Text("Smart Category", color="white", weight=ft.FontWeight.BOLD),
+                    ],
+                    spacing=8,
+                ),
+                bgcolor="#1a1a3e",
+                content=ft.Container(
+                    content=ft.Column(
+                        controls=[
+                            ft.Text("Enter brand, store, or category:", color="#aaaacc", size=14),
+                            custom_category_field,
+                            # Preview section
+                            ft.Container(
+                                content=ft.Row(
+                                    controls=[
+                                        preview_icon,
+                                        ft.Column(
+                                            controls=[
+                                                ft.Row(
+                                                    controls=[preview_text, ai_badge],
+                                                    spacing=8,
+                                                ),
+                                            ],
+                                            spacing=2,
+                                            expand=True,
+                                        ),
+                                    ],
+                                    spacing=12,
+                                ),
+                                padding=ft.padding.all(12),
+                                border_radius=12,
+                                bgcolor="#0d1829",
+                                margin=ft.margin.only(top=10),
+                            ),
+                            # Suggestions
+                            ft.Container(
+                                content=ft.Column(
+                                    controls=[
+                                        ft.Text("Suggestions:", size=12, color="#6666aa"),
+                                        suggestions_column,
+                                    ],
+                                    spacing=6,
+                                ),
+                                visible=True,
+                                margin=ft.margin.only(top=8),
+                            ),
+                        ],
+                        spacing=12,
+                        tight=True,
+                    ),
+                    width=300,
+                    padding=ft.padding.only(top=10),
+                ),
+                actions=[
+                    ft.TextButton("Cancel", on_click=cancel_custom, style=ft.ButtonStyle(color="#aaaacc")),
+                    ft.ElevatedButton(
+                        "Save",
+                        on_click=save_custom_category,
+                        bgcolor="#4F46E5",
+                        color="white",
+                    ),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            page.open(custom_dlg)
         
         def show_payment_picker(e):
             """Show payment method selection dialog."""
@@ -193,14 +462,14 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
         header = ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.Text("Add Expenses", size=26, weight=ft.FontWeight.BOLD, color="white"),
+                    ft.Text("Add Expenses", size=26, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                     ft.Container(
                         content=ft.CircleAvatar(
-                            bgcolor="#4F46E5",
+                            bgcolor=theme.accent_primary,
                             content=ft.Icon(ft.Icons.PERSON, color="white"),
                             radius=22,
                         ),
-                        on_click=go_home,
+                        on_click=lambda e: nav_profile(),
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -213,27 +482,27 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
         transaction_card = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("TRANSACTION", size=11, color="#8888aa", weight=ft.FontWeight.W_500),
+                    ft.Text("TRANSACTION", size=11, color=theme.text_muted, weight=ft.FontWeight.W_500),
                     ft.Container(height=8),
-                    ft.Text(f"{current_time}  |  {current_date}", size=16, color="white"),
+                    ft.Text(f"{current_time}  |  {current_date}", size=16, color=theme.text_primary),
                 ],
             ),
             padding=16,
             border_radius=16,
-            bgcolor="#1a1a3e",
-            border=ft.border.all(1, "#2d2d5a"),
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
         )
         
         # Category card
         category_card = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("CATEGORY", size=11, color="#8888aa", weight=ft.FontWeight.W_500),
+                    ft.Text("CATEGORY", size=11, color=theme.text_muted, weight=ft.FontWeight.W_500),
                     ft.Container(height=8),
                     ft.Row(
                         controls=[
                             category_text,
-                            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color="#8888aa", size=24),
+                            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color=theme.text_muted, size=24),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -241,8 +510,8 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             ),
             padding=16,
             border_radius=16,
-            bgcolor="#1a1a3e",
-            border=ft.border.all(1, "#2d2d5a"),
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
             on_click=show_category_picker,
             ink=True,
         )
@@ -251,18 +520,18 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
         amount_card = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("AMOUNT", size=11, color="#8888aa", weight=ft.FontWeight.W_500),
+                    ft.Text("AMOUNT", size=11, color=theme.text_muted, weight=ft.FontWeight.W_500),
                     ft.Container(height=8),
                     ft.Row(
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text("₱", size=18, color="white", weight=ft.FontWeight.W_500),
+                                    ft.Text("₱", size=18, color=theme.text_primary, weight=ft.FontWeight.W_500),
                                     amount_field,
                                 ],
                                 spacing=4,
                             ),
-                            ft.Icon(ft.Icons.EDIT, color="#8888aa", size=20),
+                            ft.Icon(ft.Icons.EDIT, color=theme.text_muted, size=20),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -270,20 +539,20 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             ),
             padding=16,
             border_radius=16,
-            bgcolor="#1a1a3e",
-            border=ft.border.all(1, "#2d2d5a"),
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
         )
         
         # Currency card
         currency_card = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("CURRENCY", size=11, color="#8888aa", weight=ft.FontWeight.W_500),
+                    ft.Text("CURRENCY", size=11, color=theme.text_muted, weight=ft.FontWeight.W_500),
                     ft.Container(height=8),
                     ft.Row(
                         controls=[
                             currency_text,
-                            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color="#8888aa", size=24),
+                            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color=theme.text_muted, size=24),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -291,8 +560,8 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             ),
             padding=16,
             border_radius=16,
-            bgcolor="#1a1a3e",
-            border=ft.border.all(1, "#2d2d5a"),
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
             on_click=show_currency_picker,
             ink=True,
         )
@@ -301,12 +570,12 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
         payment_card = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Text("PAYMENT METHOD", size=11, color="#8888aa", weight=ft.FontWeight.W_500),
+                    ft.Text("PAYMENT METHOD", size=11, color=theme.text_muted, weight=ft.FontWeight.W_500),
                     ft.Container(height=8),
                     ft.Row(
                         controls=[
                             payment_text,
-                            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color="#8888aa", size=24),
+                            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color=theme.text_muted, size=24),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -314,8 +583,8 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             ),
             padding=16,
             border_radius=16,
-            bgcolor="#1a1a3e",
-            border=ft.border.all(1, "#2d2d5a"),
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
             on_click=show_payment_picker,
             ink=True,
         )
@@ -329,7 +598,7 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
             ),
-            bgcolor="#6366F1",
+            bgcolor=theme.accent_primary,
             width=280,
             height=50,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12)),
@@ -342,33 +611,33 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                 controls=[
                     ft.IconButton(
                         icon=ft.Icons.HOME_ROUNDED,
-                        icon_color="#A855F7",
+                        icon_color=theme.text_muted,
                         icon_size=28,
-                        on_click=go_home,
+                        on_click=lambda e: nav_home(),
                     ),
                     ft.IconButton(
-                        icon=ft.Icons.BAR_CHART_ROUNDED,
-                        icon_color="#6B7280",
+                        icon=ft.Icons.ANALYTICS_ROUNDED,
+                        icon_color=theme.text_muted,
                         icon_size=28,
-                        on_click=go_home,
+                        on_click=lambda e: nav_expenses(),
                     ),
                     ft.Container(width=56),  # Space for FAB
                     ft.IconButton(
                         icon=ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED,
-                        icon_color="#6B7280",
+                        icon_color=theme.text_muted,
                         icon_size=28,
-                        on_click=go_home,
+                        on_click=lambda e: nav_wallet(),
                     ),
                     ft.IconButton(
                         icon=ft.Icons.PERSON_ROUNDED,
-                        icon_color="#6B7280",
+                        icon_color=theme.text_muted,
                         icon_size=28,
-                        on_click=go_home,
+                        on_click=lambda e: nav_profile(),
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_AROUND,
             ),
-            bgcolor="#0d0d1a",
+            bgcolor=theme.nav_bg,
             border_radius=ft.border_radius.only(top_left=24, top_right=24),
             padding=ft.padding.symmetric(vertical=12, horizontal=8),
         )
@@ -403,7 +672,7 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                 gradient=ft.LinearGradient(
                     begin=ft.alignment.top_center,
                     end=ft.alignment.bottom_center,
-                    colors=["#0f0f23", "#0a0a14"],
+                    colors=[theme.bg_gradient_start, theme.bg_primary],
                 ),
                 content=ft.Column(
                     controls=[

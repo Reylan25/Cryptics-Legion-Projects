@@ -1,10 +1,32 @@
 # src/ui/wallet_page.py
 import flet as ft
 from core import db
+from ui.nav_bar_buttom import create_page_with_nav
 
 
-def create_wallet_view(page: ft.Page, state: dict, toast, go_back):
+def create_wallet_view(page: ft.Page, state: dict, toast, go_back, 
+                       show_expenses=None, show_profile=None, show_add_expense=None):
     """Create the wallet/budget page."""
+    
+    def nav_home():
+        """Navigate to home."""
+        if go_back:
+            go_back()
+    
+    def nav_expenses():
+        """Navigate to expenses page."""
+        if show_expenses:
+            show_expenses()
+    
+    def nav_profile():
+        """Navigate to profile page."""
+        if show_profile:
+            show_profile()
+    
+    def nav_add_expense():
+        """Navigate to add expense page."""
+        if show_add_expense:
+            show_add_expense()
     
     def show_view():
         page.clean()
@@ -19,17 +41,26 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back):
         spent_percent = (total_spent / budget * 100) if budget > 0 else 0
         
         # Header
-        header = ft.Row(
-            controls=[
-                ft.IconButton(
-                    icon=ft.Icons.ARROW_BACK,
-                    icon_color="white",
-                    on_click=lambda e: go_back(),
-                ),
-                ft.Text("Wallet", size=20, weight=ft.FontWeight.BOLD, color="white"),
-                ft.Container(width=48),
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        header = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Text("Wallet", size=28, weight=ft.FontWeight.BOLD, color="white"),
+                    ft.Container(
+                        content=ft.CircleAvatar(
+                            foreground_image_src="/assets/icon.png",
+                            bgcolor="#4F46E5",
+                            content=ft.Icon(ft.Icons.PERSON, color="white"),
+                            radius=22,
+                        ),
+                        on_click=lambda e: show_profile_page(),
+                        ink=True,
+                        border_radius=22,
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=ft.padding.only(top=10, bottom=10),
         )
         
         # Budget overview card
@@ -171,31 +202,51 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back):
             ],
         )
         
-        # Main layout
-        page.add(
-            ft.Container(
+        # Main scrollable content
+        scrollable_content = ft.Column(
+            controls=[
+                budget_card,
+                ft.Container(height=24),
+                stats_row,
+                ft.Container(height=24),
+                ft.Text("Spending by Category", size=16, weight=ft.FontWeight.W_600, color="white"),
+                ft.Container(height=12),
+                category_list,
+                ft.Container(height=100),  # Space for bottom nav
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
+        
+        main_content = ft.Container(
+            expand=True,
+            gradient=ft.LinearGradient(
+                begin=ft.alignment.top_center,
+                end=ft.alignment.bottom_center,
+                colors=["#0f0f23", "#0a0a14"],
+            ),
+            padding=ft.padding.only(left=20, right=20, top=10, bottom=0),
+            content=ft.Column(
+                controls=[
+                    header,
+                    scrollable_content,
+                ],
                 expand=True,
-                gradient=ft.LinearGradient(
-                    begin=ft.alignment.top_center,
-                    end=ft.alignment.bottom_center,
-                    colors=["#0f0f23", "#0a0a14"],
-                ),
-                padding=20,
-                content=ft.Column(
-                    controls=[
-                        header,
-                        ft.Container(height=20),
-                        budget_card,
-                        ft.Container(height=24),
-                        stats_row,
-                        ft.Container(height=24),
-                        ft.Text("Spending by Category", size=16, weight=ft.FontWeight.W_600, color="white"),
-                        ft.Container(height=12),
-                        category_list,
-                    ],
-                    expand=True,
-                    scroll=ft.ScrollMode.AUTO,
-                ),
+                spacing=0,
+            ),
+        )
+        
+        # Use centralized nav bar component
+        page.add(
+            create_page_with_nav(
+                page=page,
+                main_content=main_content,
+                active_index=2,  # Wallet is active
+                on_home=nav_home,
+                on_expenses=nav_expenses,
+                on_wallet=None,  # Already on wallet
+                on_profile=nav_profile,
+                on_fab_click=nav_add_expense,
             )
         )
         page.update()
