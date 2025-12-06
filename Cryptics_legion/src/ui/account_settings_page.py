@@ -31,9 +31,20 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
         user_profile = db.get_user_profile(state["user_id"]) or {}
         
         # Create text field references for editing
-        full_name_field = ft.TextField(
-            value=user_profile.get("full_name", ""),
-            hint_text="Enter your full name",
+        first_name_field = ft.TextField(
+            value=user_profile.get("first_name", ""),
+            hint_text="Enter your first name",
+            hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
+            border=ft.InputBorder.NONE,
+            bgcolor="transparent",
+            color=TEXT_PRIMARY,
+            text_size=14,
+            content_padding=ft.padding.symmetric(horizontal=12, vertical=14),
+        )
+        
+        last_name_field = ft.TextField(
+            value=user_profile.get("last_name", ""),
+            hint_text="Enter your last name",
             hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
             border=ft.InputBorder.NONE,
             bgcolor="transparent",
@@ -173,9 +184,16 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
             # Extract currency code from format "PHP (₱) - Philippine Peso"
             currency_code = currency_dropdown.value.split(" ")[0] if currency_dropdown.value else "PHP"
             
+            # Combine first and last name
+            first_name = first_name_field.value.strip() if first_name_field.value else ""
+            last_name = last_name_field.value.strip() if last_name_field.value else ""
+            full_name = f"{first_name} {last_name}".strip()
+            
             # Collect form data including photo
             form_data = {
-                "full_name": full_name_field.value or "",
+                "first_name": first_name,
+                "last_name": last_name,
+                "full_name": full_name,
                 "email": email_field.value or "",
                 "phone": phone_field.value or "",
                 "currency": currency_code,
@@ -185,8 +203,12 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
             }
             
             # Validate
-            if not form_data["full_name"].strip():
-                toast("Please enter your full name", "#b71c1c")
+            if not first_name:
+                toast("Please enter your first name", "#b71c1c")
+                return
+            
+            if not last_name:
+                toast("Please enter your last name", "#b71c1c")
                 return
             
             # Save to database
@@ -288,9 +310,15 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
             avatar_stack.controls[0] = new_display
             # Extract currency code from format "PHP (₱) - Philippine Peso"
             currency_code = currency_dropdown.value.split(" ")[0] if currency_dropdown.value else "PHP"
+            # Combine first and last name
+            first_name = first_name_field.value or user_profile.get("first_name", "")
+            last_name = last_name_field.value or user_profile.get("last_name", "")
+            full_name = f"{first_name} {last_name}".strip() if (first_name or last_name) else user_profile.get("full_name", "")
             # Save photo to database
             form_data = {
-                "full_name": full_name_field.value or user_profile.get("full_name", ""),
+                "first_name": first_name,
+                "last_name": last_name,
+                "full_name": full_name,
                 "email": email_field.value or user_profile.get("email", ""),
                 "phone": phone_field.value or user_profile.get("phone", ""),
                 "currency": currency_code,
@@ -547,7 +575,9 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
                         spacing=8,
                     ),
                     ft.Container(height=12),
-                    create_field_container("Full Name", ft.Icons.BADGE_OUTLINED, full_name_field),
+                    create_field_container("First Name", ft.Icons.BADGE_OUTLINED, first_name_field),
+                    ft.Container(height=12),
+                    create_field_container("Last Name", ft.Icons.BADGE_OUTLINED, last_name_field),
                     ft.Container(height=12),
                     create_field_container("Email Address", ft.Icons.EMAIL_OUTLINED, email_field),
                     ft.Container(height=12),
@@ -698,9 +728,19 @@ def build_account_settings_content(page: ft.Page, state: dict, toast, go_back):
         photo_state = {"type": "default", "value": None, "bg": None}
     
     # Form fields
-    full_name_field = ft.TextField(
-        value=user_profile.get("full_name", ""),
-        hint_text="Enter your full name",
+    first_name_field = ft.TextField(
+        value=user_profile.get("first_name", ""),
+        hint_text="Enter your first name",
+        hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
+        border=ft.InputBorder.NONE,
+        bgcolor="transparent",
+        color=TEXT_PRIMARY,
+        text_size=14,
+    )
+    
+    last_name_field = ft.TextField(
+        value=user_profile.get("last_name", ""),
+        hint_text="Enter your last name",
         hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
         border=ft.InputBorder.NONE,
         bgcolor="transparent",
@@ -812,8 +852,14 @@ def build_account_settings_content(page: ft.Page, state: dict, toast, go_back):
     
     def save_photo_to_db():
         """Save photo state to database."""
+        first_name = first_name_field.value.strip() if first_name_field.value else user_profile.get("first_name", "")
+        last_name = last_name_field.value.strip() if last_name_field.value else user_profile.get("last_name", "")
+        full_name = f"{first_name} {last_name}".strip() if (first_name or last_name) else user_profile.get("full_name", "")
+        
         form_data = {
-            "full_name": full_name_field.value.strip() if full_name_field.value else user_profile.get("full_name", ""),
+            "first_name": first_name,
+            "last_name": last_name,
+            "full_name": full_name,
             "email": email_field.value.strip() if email_field.value else user_profile.get("email", ""),
             "phone": phone_field.value.strip() if phone_field.value else user_profile.get("phone", ""),
             "currency": user_profile.get("currency", "PHP"),
@@ -1024,8 +1070,24 @@ def build_account_settings_content(page: ft.Page, state: dict, toast, go_back):
                 state["username"] = new_username
                 username_error.visible = False
         
+        # Combine first and last name
+        first_name = first_name_field.value.strip() if first_name_field.value else ""
+        last_name = last_name_field.value.strip() if last_name_field.value else ""
+        full_name = f"{first_name} {last_name}".strip()
+        
+        # Validate
+        if not first_name:
+            toast("Please enter your first name", "#b71c1c")
+            return
+        
+        if not last_name:
+            toast("Please enter your last name", "#b71c1c")
+            return
+        
         form_data = {
-            "full_name": full_name_field.value.strip(),
+            "first_name": first_name,
+            "last_name": last_name,
+            "full_name": full_name,
             "email": email_field.value.strip(),
             "phone": phone_field.value.strip(),
             "currency": user_profile.get("currency", "PHP"),
@@ -1104,7 +1166,9 @@ def build_account_settings_content(page: ft.Page, state: dict, toast, go_back):
             ft.Container(height=12),
             ft.Text("Personal Information", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
             ft.Container(height=12),
-            create_field_row(ft.Icons.PERSON_OUTLINE_ROUNDED, full_name_field),
+            create_field_row(ft.Icons.PERSON_OUTLINE_ROUNDED, first_name_field),
+            ft.Container(height=12),
+            create_field_row(ft.Icons.PERSON_OUTLINE_ROUNDED, last_name_field),
             ft.Container(height=12),
             create_field_row(ft.Icons.EMAIL_OUTLINED, email_field),
             ft.Container(height=12),

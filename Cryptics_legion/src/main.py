@@ -12,6 +12,7 @@ import core.auth as auth
 from ui.login_page import build_login_content
 from ui.register_page import build_register_content
 from ui.onboarding_page import build_onboarding_content
+from ui.forgot_password_page import create_forgot_password_view
 from ui.personal_details import build_personal_details_content
 from ui.my_balance import build_my_balance_content
 from ui.home_page import build_home_content
@@ -86,9 +87,24 @@ def main(page: ft.Page):
 
     # ============ VIEW NAVIGATION FUNCTIONS ============
     def show_login():
+        # Check if app_container still exists (forgot password uses page.clean())
+        if not page.controls or app_container not in page.controls:
+            # Recreate the app structure
+            page.clean()
+            page.add(app_container)
+        
         navigate_to("login", lambda: build_login_content(
-            page, on_login_success, show_register, show_onboarding, toast
+            page, on_login_success, show_register, show_onboarding, toast, show_forgot_password
         ))
+    
+    def show_forgot_password():
+        # Navigate properly - the forgot password page will handle its own rendering
+        state["previous_view"] = state["current_view"]
+        state["current_view"] = "forgot_password"
+        update_theme()
+        # Call the view function which uses page.clean() and page.add()
+        forgot_password_view = create_forgot_password_view(page, show_login, toast)
+        forgot_password_view()
     
     def show_register():
         navigate_to("register", lambda: build_register_content(

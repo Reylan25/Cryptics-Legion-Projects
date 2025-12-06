@@ -4,13 +4,14 @@ from core import auth
 from core.theme import get_theme
 
 
-def create_login_view(page: ft.Page, on_success, show_register, show_onboarding, toast):
+def create_login_view(page: ft.Page, on_success, show_register, show_onboarding, toast, show_forgot_password=None):
     """
     Returns a callable that will render the login view when called.
     on_success(user_id) -> called when login succeeds.
     show_register() -> callable to show register page
     show_onboarding() -> callable to show onboarding
     toast(message, color) -> helper to show snackbars
+    show_forgot_password() -> callable to show forgot password page
     """
     
     # Error message text with icon container
@@ -195,7 +196,7 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
         forgot_password = ft.TextButton(
             "Forgot Password?",
             style=ft.ButtonStyle(color=theme.text_secondary),
-            on_click=lambda e: toast("Password reset feature coming soon!", theme.accent_primary),
+            on_click=lambda e: show_forgot_password() if show_forgot_password else toast("Password reset feature coming soon!", theme.accent_primary),
         )
 
         page.add(
@@ -273,7 +274,7 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
 
 
 # ============ NEW: Content builder for flash-free navigation ============
-def build_login_content(page: ft.Page, on_success, show_register, show_onboarding, toast):
+def build_login_content(page: ft.Page, on_success, show_register, show_onboarding, toast, show_forgot_password=None):
     """
     Builds and returns login page content WITHOUT calling page.clean() or page.add().
     """
@@ -451,6 +452,7 @@ def build_login_content(page: ft.Page, on_success, show_register, show_onboardin
     forgot_password = ft.TextButton(
         "Forgot Password?",
         style=ft.ButtonStyle(color=theme.accent_secondary),
+        on_click=lambda e: show_forgot_password() if show_forgot_password else None,
     )
     
     return ft.Container(

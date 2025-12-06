@@ -34,6 +34,8 @@ def connect_db():
     # Migration: Add personal details columns
     personal_columns = [
         ("full_name", "TEXT DEFAULT ''"),
+        ("first_name", "TEXT DEFAULT ''"),
+        ("last_name", "TEXT DEFAULT ''"),
         ("email", "TEXT DEFAULT ''"),
         ("phone", "TEXT DEFAULT ''"),
         ("currency", "TEXT DEFAULT 'PHP'"),
@@ -107,6 +109,18 @@ def connect_db():
         cursor.execute("ALTER TABLE expenses ADD COLUMN account_id INTEGER")
     except sqlite3.OperationalError:
         pass  # Column already exists
+
+    # OTP table for password reset
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS password_reset_otps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        otp TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        is_used INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
 
     conn.commit()
     return conn
@@ -194,7 +208,7 @@ def get_user_profile(user_id: int) -> dict:
     conn = connect_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, username, full_name, email, phone, currency, 
+        SELECT id, username, full_name, first_name, last_name, email, phone, currency, 
                timezone, first_day_of_week, photo
         FROM users WHERE id = ?
     """, (user_id,))
@@ -203,9 +217,9 @@ def get_user_profile(user_id: int) -> dict:
     if row:
         # Parse photo JSON
         photo_data = None
-        if row[8]:
+        if row[10]:
             try:
-                photo_data = json.loads(row[8])
+                photo_data = json.loads(row[10])
             except:
                 photo_data = None
         
@@ -213,11 +227,13 @@ def get_user_profile(user_id: int) -> dict:
             "id": row[0],
             "username": row[1],
             "full_name": row[2] or "",
-            "email": row[3] or "",
-            "phone": row[4] or "",
-            "currency": row[5] or "PHP",
-            "timezone": row[6] or "Asia/Manila",
-            "first_day_of_week": row[7] or "Monday",
+            "first_name": row[3] or "",
+            "last_name": row[4] or "",
+            "email": row[5] or "",
+            "phone": row[6] or "",
+            "currency": row[7] or "PHP",
+            "timezone": row[8] or "Asia/Manila",
+            "first_day_of_week": row[9] or "Monday",
             "photo": photo_data,
         }
     return None
@@ -236,6 +252,8 @@ def save_personal_details(user_id: int, details: dict) -> bool:
         cur.execute("""
             UPDATE users SET 
                 full_name = ?,
+                first_name = ?,
+                last_name = ?,
                 email = ?,
                 phone = ?,
                 currency = ?,
@@ -245,6 +263,8 @@ def save_personal_details(user_id: int, details: dict) -> bool:
             WHERE id = ?
         """, (
             details.get("full_name", ""),
+            details.get("first_name", ""),
+            details.get("last_name", ""),
             details.get("email", ""),
             details.get("phone", ""),
             details.get("currency", "PHP"),
@@ -651,3 +671,106 @@ def get_account_by_id(account_id: int, user_id: int):
     row = cur.fetchone()
     conn.close()
     return row
+
+
+# ----- OTP/Password Reset helpers -----
+def create_password_reset_otp(user_id: int, otp: str) -> bool:
+    """Create a new password reset OTP for a user."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        # Invalidate any existing unused OTPs for this user
+        cur.execute("UPDATE password_reset_otps SET is_used = 1 WHERE user_id = ? AND is_used = 0", (user_id,))
+        
+        # Create new OTP
+        cur.execute(
+            "INSERT INTO password_reset_otps (user_id, otp, created_at) VALUES (?, ?, ?)",
+            (user_id, otp, datetime.now().isoformat())
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error creating OTP: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def verify_password_reset_otp(user_id: int, otp: str) -> tuple:
+    """
+    Verify a password reset OTP.
+    Returns (success, message, otp_id).
+    """
+    from utils.otp import is_otp_expired
+    
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    cur.execute(
+        "SELECT id, created_at, is_used FROM password_reset_otps WHERE user_id = ? AND otp = ? ORDER BY created_at DESC LIMIT 1",
+        (user_id, otp)
+    )
+    row = cur.fetchone()
+    conn.close()
+    
+    if not row:
+        return (False, "Invalid OTP code", None)
+    
+    otp_id, created_at, is_used = row
+    
+    if is_used:
+        return (False, "This OTP has already been used", None)
+    
+    if is_otp_expired(created_at):
+        return (False, "OTP has expired. Please request a new one", None)
+    
+    return (True, "OTP verified successfully", otp_id)
+
+
+def mark_otp_as_used(otp_id: int):
+    """Mark an OTP as used after successful password reset."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE password_reset_otps SET is_used = 1 WHERE id = ?", (otp_id,))
+    conn.commit()
+    conn.close()
+
+
+def cleanup_expired_otps():
+    """Clean up OTPs older than 24 hours."""
+    from datetime import datetime, timedelta
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+    cur.execute("DELETE FROM password_reset_otps WHERE created_at < ?", (cutoff,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def get_user_by_email(email: str):
+    """Get user by email address."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, email FROM users WHERE email = ?", (email,))
+    row = cur.fetchone()
+    conn.close()
+    return row  # (id, username, email) or None
+
+
+def update_password(user_id: int, new_password_blob: bytes) -> bool:
+    """Update user password."""
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET password = ? WHERE id = ?", (new_password_blob, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print(f"Error updating password: {e}")
+        return False
+    finally:
+        conn.close()

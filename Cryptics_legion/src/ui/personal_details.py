@@ -35,6 +35,8 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
         # Form state - now includes username
         form_data = {
             "username": "",
+            "first_name": "",
+            "last_name": "",
             "full_name": "",
             "email": "",
             "phone": "",
@@ -786,10 +788,17 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
             if has_errors:
                 return
             
-            # Validate full name
-            if not form_data["full_name"].strip():
-                show_validation_dialog("Full Name Required", "Please enter your full name. This will be your account identifier.")
+            # Validate first name and last name
+            if not form_data["first_name"].strip():
+                show_validation_dialog("First Name Required", "Please enter your first name.")
                 has_errors = True
+            
+            if not form_data["last_name"].strip():
+                show_validation_dialog("Last Name Required", "Please enter your last name.")
+                has_errors = True
+            
+            # Combine first and last name into full_name
+            form_data["full_name"] = f"{form_data['first_name'].strip()} {form_data['last_name'].strip()}"
             
             if has_errors:
                 return
@@ -1205,7 +1214,7 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
     ERROR_COLOR = "#EF4444"
     SUCCESS_COLOR = "#2E7D32"
     
-    form_data = {"username": "", "full_name": "", "email": "", "phone": "", "currency": "PHP"}
+    form_data = {"username": "", "first_name": "", "last_name": "", "full_name": "", "email": "", "phone": "", "currency": "PHP"}
     
     def create_field(label, hint, icon, key):
         def on_change(e):
@@ -1233,9 +1242,14 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
     
     def handle_continue(e):
         username = form_data["username"].strip()
-        full_name = form_data["full_name"].strip()
+        first_name = form_data["first_name"].strip()
+        last_name = form_data["last_name"].strip()
         email = form_data["email"].strip()
         phone = form_data["phone"].strip()
+        
+        # Combine first and last name
+        full_name = f"{first_name} {last_name}".strip()
+        form_data["full_name"] = full_name
         
         # Validation with detailed messages
         if not username:
@@ -1250,8 +1264,12 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             show_validation_dialog(page, "Username Taken", f"The username '{username}' is already taken. Please choose another.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
         
-        if not full_name:
-            show_validation_dialog(page, "Full Name Required", "Please enter your full name to complete your profile.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
+        if not first_name:
+            show_validation_dialog(page, "First Name Required", "Please enter your first name.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
+            return
+        
+        if not last_name:
+            show_validation_dialog(page, "Last Name Required", "Please enter your last name.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
         
         if not email:
@@ -1395,7 +1413,9 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             ft.Container(height=16),
             create_field("Username", "Choose a username", ft.Icons.ALTERNATE_EMAIL_ROUNDED, "username"),
             ft.Container(height=12),
-            create_field("Full Name", "Enter your full name", ft.Icons.PERSON_OUTLINE_ROUNDED, "full_name"),
+            create_field("First Name", "Enter first name", ft.Icons.PERSON_OUTLINE_ROUNDED, "first_name"),
+            ft.Container(height=12),
+            create_field("Last Name", "Enter last name", ft.Icons.PERSON_OUTLINE_ROUNDED, "last_name"),
             ft.Container(height=12),
             create_field("Email", "Enter your email", ft.Icons.EMAIL_OUTLINED, "email"),
             ft.Container(height=12),

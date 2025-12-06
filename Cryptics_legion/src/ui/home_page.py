@@ -9,6 +9,20 @@ import random
 import math
 
 
+def get_time_based_greeting():
+    """Get greeting based on current time of day."""
+    current_hour = datetime.now().hour
+    
+    if 5 <= current_hour < 12:
+        return "Good Morning"
+    elif 12 <= current_hour < 18:
+        return "Good Afternoon"
+    elif 18 <= current_hour < 22:
+        return "Good Evening"
+    else:
+        return "Welcome back"
+
+
 def get_clearbit_logo(domain: str) -> str:
     """Get brand logo URL from Clearbit API."""
     return f"https://logo.clearbit.com/{domain}"
@@ -1003,7 +1017,13 @@ def build_home_content(page: ft.Page, state: dict, toast,
     
     # Get user profile for name and avatar
     user_profile = db.get_user_profile(state["user_id"])
-    first_name = user_profile.get("firstName", "User") if user_profile else "User"
+    first_name = user_profile.get("first_name") or user_profile.get("firstName", "User") if user_profile else "User"
+    last_name = user_profile.get("last_name") or user_profile.get("lastName", "") if user_profile else ""
+    full_name = f"{first_name} {last_name}".strip() if last_name else first_name
+    username = user_profile.get("username", f"user_{state['user_id']}") if user_profile else f"user_{state['user_id']}"
+    
+    # Get time-based greeting
+    greeting = get_time_based_greeting()
     
     # Get user's currency preference
     user_currency = get_currency_from_user_profile(user_profile)
@@ -1076,7 +1096,7 @@ def build_home_content(page: ft.Page, state: dict, toast,
             controls=[
                 ft.Column(
                     controls=[
-                        ft.Text(f"Welcome back,", size=13, color=theme.text_secondary, weight=ft.FontWeight.W_400),
+                        ft.Text(f"{greeting},", size=13, color=theme.text_secondary, weight=ft.FontWeight.W_400),
                         ft.Text(first_name, size=22, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                     ],
                     spacing=0,
@@ -1091,18 +1111,34 @@ def build_home_content(page: ft.Page, state: dict, toast,
                             style=ft.ButtonStyle(padding=8),
                         ),
                         ft.Container(
+                            content=ft.Column(
+                                controls=[
+                                    ft.Text(
+                                        f"@{username}",
+                                        size=12,
+                                        color=theme.text_primary,
+                                        weight=ft.FontWeight.W_500,
+                                        text_align=ft.TextAlign.RIGHT,
+                                    ),
+                                ],
+                                spacing=0,
+                                horizontal_alignment=ft.CrossAxisAlignment.END,
+                            ),
+                            padding=ft.padding.only(right=8),
+                        ),
+                        ft.Container(
                             content=user_avatar,
                             on_click=show_profile,
                             ink=True,
                             border_radius=22,
                         ),
                     ],
-                    spacing=8,
+                    spacing=4,
                 ),
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
-        padding=ft.padding.only(top=10, bottom=16),
+        padding=ft.padding.only(top=20, bottom=16),
     )
     
     # Gauge

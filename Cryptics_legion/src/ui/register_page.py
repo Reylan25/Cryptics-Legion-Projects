@@ -37,16 +37,16 @@ def create_register_view(page: ft.Page, on_registered, show_login, toast, state=
                 controls=[
                     ft.Icon(
                         ft.Icons.CHECK_CIRCLE if is_valid else ft.Icons.RADIO_BUTTON_UNCHECKED,
-                        size=16,
+                        size=12,
                         color=VALID_COLOR if is_valid else INVALID_COLOR,
                     ),
                     ft.Text(
                         text,
-                        size=12,
+                        size=10,
                         color=VALID_COLOR if is_valid else INVALID_COLOR,
                     ),
                 ],
-                spacing=8,
+                spacing=6,
             )
         
         # Validation indicator controls
@@ -68,7 +68,7 @@ def create_register_view(page: ft.Page, on_registered, show_login, toast, state=
                     special_check,
                     spaces_check,
                 ],
-                spacing=6,
+                spacing=4,
             ),
             padding=ft.padding.only(left=10, top=8, bottom=8),
             visible=False,  # Hidden initially
@@ -337,11 +337,11 @@ def build_register_content(page: ft.Page, on_registered, show_login, toast, stat
             controls=[
                 ft.Icon(
                     ft.Icons.CHECK_CIRCLE if is_valid else ft.Icons.RADIO_BUTTON_UNCHECKED,
-                    size=16, color=VALID_COLOR if is_valid else INVALID_COLOR,
+                    size=12, color=VALID_COLOR if is_valid else INVALID_COLOR,
                 ),
-                ft.Text(text, size=12, color=VALID_COLOR if is_valid else INVALID_COLOR),
+                ft.Text(text, size=10, color=VALID_COLOR if is_valid else INVALID_COLOR),
             ],
-            spacing=8,
+            spacing=6,
         )
     
     length_check = create_validation_row("8-20 characters", False)
@@ -353,7 +353,7 @@ def build_register_content(page: ft.Page, on_registered, show_login, toast, stat
     
     validation_container = ft.Column(
         controls=[length_check, uppercase_check, lowercase_check, number_check, special_check, spaces_check],
-        spacing=6,
+        spacing=4,
     )
     
     strength_bar = ft.Container(
