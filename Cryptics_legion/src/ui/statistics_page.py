@@ -4,6 +4,18 @@ from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
 from datetime import datetime, timedelta
+from utils.statistics import (
+    get_expense_summary_by_period,
+    get_daily_expenses,
+    get_weekly_expenses,
+    get_monthly_expenses,
+    get_spending_trend,
+    get_top_spending_categories,
+    get_category_color,
+    get_statistics_summary,
+    get_average_daily_spending,
+)
+from utils.currency import format_currency, get_currency_from_user_profile
 
 
 def get_clearbit_logo(domain: str) -> str:
@@ -359,7 +371,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
                             content=ft.Column(
                                 controls=[
                                     ft.Text("Amount", size=12, color=theme.text_secondary),
-                                    ft.Text(f"₱{amount:,.2f}", size=32, weight=ft.FontWeight.BOLD, color="#EF4444"),
+                                    ft.Text(format_currency(amount, user_currency), size=32, weight=ft.FontWeight.BOLD, color="#EF4444"),
                                 ],
                                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             ),
@@ -484,7 +496,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
                     ft.Column(
                         controls=[
                             ft.Text(f"{selected_period['value']} Spending", size=12, color=theme.text_secondary),
-                            ft.Text(f"₱{total_spent:,.2f}", size=24, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ft.Text(format_currency(total_spent, user_currency), size=24, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                         ],
                         spacing=2,
                     ),
@@ -539,6 +551,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
                     on_click=lambda e, ex=exp, t=theme: show_transaction_detail(ex, t),
                     theme=theme,
                     account_name=acc_name,
+                    user_currency=user_currency,
                 )
             )
         
@@ -614,15 +627,22 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
                               go_back, show_expenses, show_profile, show_add_expense):
     """
     Builds and returns statistics page content WITHOUT calling page.clean() or page.add().
+    Enhanced with comprehensive statistics, pie charts, bar charts, and trend analysis.
     """
     theme = get_theme()
+    user_id = state["user_id"]
+    user_profile = db.get_user_profile(user_id)
+    user_currency = get_currency_from_user_profile(user_profile)
+    
+    # State for period and chart type selection
+    selected_period = {"value": "1M"}
+    selected_chart = {"value": "pie"}  # "pie", "bar_daily", "bar_weekly", "bar_monthly"
     
     # Get user profile for avatar
-    user_profile = db.get_user_profile(state["user_id"])
-    first_name = user_profile.get("firstName", "User") if user_profile else "User"
+    user_profile = db.get_user_profile(user_id)
     
     # Create avatar
-    user_avatar = create_user_avatar(state["user_id"], radius=22, theme=theme)
+    user_avatar = create_user_avatar(user_id, radius=22, theme=theme)
     
     # Header
     header = ft.Container(
@@ -657,71 +677,331 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
         padding=ft.padding.only(top=10, bottom=16),
     )
     
-    # Get expenses data
-    from utils.statistics import get_expense_summary
-    expense_summary = get_expense_summary()
-    pie_sections = [
-        ft.PieChartSection(
-            value=float(row[1]),
-            title=row[0],
-            color=None
-        ) for row in expense_summary
-    ]
-    # Note: To add interactivity, use PieChart's on_section_click event if available in Flet version
-
-    filtered_category = {"value": None}
-    def filter_by_category(category):
-        filtered_category["value"] = category
-        page.update()
-
-    # Get all expenses
-    all_expenses = db.select_expenses_by_user(state["user_id"])
-    if filtered_category["value"]:
-        expenses = [exp for exp in all_expenses if exp[3] == filtered_category["value"]]
-    else:
-        expenses = all_expenses
-
-    # Pie chart control
-    pie_chart = ft.PieChart(
-        sections=pie_sections,
-        expand=True,
-        center_space_radius=40,
-        sections_space=2,
+    # Get comprehensive statistics
+    stats = get_statistics_summary(user_id, selected_period["value"])
+    trend = stats["trend"]
+    top_categories = stats["top_categories"]
+    
+    # Trend indicator
+    trend_icon = ft.Icons.TRENDING_UP if trend["trend"] == "up" else (
+        ft.Icons.TRENDING_DOWN if trend["trend"] == "down" else ft.Icons.TRENDING_FLAT
     )
-
-    # Summary card
-    total_spent = sum(exp[2] for exp in all_expenses)
+    trend_color = "#EF4444" if trend["trend"] == "up" else (
+        "#10B981" if trend["trend"] == "down" else theme.text_secondary
+    )
+    
+    # Summary Card with trend
     summary_card = ft.Container(
         content=ft.Column(
             controls=[
-                ft.Text("Total Spent", size=12, color=theme.text_secondary),
-                ft.Text(f"₱{total_spent:,.2f}", size=24, weight=ft.FontWeight.BOLD, color=theme.text_primary),
-                ft.Text(f"Top Category: {expense_summary[0][0] if expense_summary else 'N/A'}", size=14, color=theme.text_secondary),
+                ft.Row(
+                    controls=[
+                        ft.Column(
+                            controls=[
+                                ft.Text("Total Spent", size=12, color=theme.text_secondary),
+                                ft.Text(format_currency(stats['total_spent'], user_currency), size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ],
+                            spacing=2,
+                        ),
+                        ft.Container(
+                            content=ft.Row(
+                                controls=[
+                                    ft.Icon(trend_icon, color=trend_color, size=16),
+                                    ft.Text(
+                                        f"{abs(trend['change_percent']):.1f}%",
+                                        size=12,
+                                        color=trend_color,
+                                        weight=ft.FontWeight.W_600,
+                                    ),
+                                ],
+                                spacing=4,
+                            ),
+                            bgcolor=f"{trend_color}20",
+                            border_radius=12,
+                            padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                ft.Container(height=8),
+                ft.Row(
+                    controls=[
+                        _stat_mini_card("📊", f"{stats['transaction_count']}", "Transactions", theme),
+                        _stat_mini_card("📁", f"{stats['category_count']}", "Categories", theme),
+                        _stat_mini_card("📅", format_currency(get_average_daily_spending(user_id), user_currency), "Daily Avg", theme),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
             ],
-            spacing=4,
         ),
-        padding=ft.padding.symmetric(horizontal=16, vertical=12),
-        border_radius=12,
+        padding=16,
+        border_radius=16,
         bgcolor=theme.bg_card,
         border=ft.border.all(1, theme.border_primary),
     )
-
-    # Transaction list (filtered)
+    
+    # Period selector
+    def on_period_change(period):
+        selected_period["value"] = period
+        # Refresh the page content
+        page.update()
+    
+    period_buttons = ft.Row(
+        controls=[
+            _create_period_chip("1W", selected_period["value"], on_period_change, theme),
+            _create_period_chip("1M", selected_period["value"], on_period_change, theme),
+            _create_period_chip("3M", selected_period["value"], on_period_change, theme),
+            _create_period_chip("6M", selected_period["value"], on_period_change, theme),
+            _create_period_chip("1Y", selected_period["value"], on_period_change, theme),
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+        spacing=8,
+    )
+    
+    # Create Pie Chart with colors
+    expense_summary = get_expense_summary_by_period(user_id, selected_period["value"])
+    total = sum(row[1] for row in expense_summary) if expense_summary else 0
+    
+    pie_sections = []
+    for category, amount in expense_summary:
+        percentage = (amount / total * 100) if total > 0 else 0
+        color = get_category_color(category)
+        pie_sections.append(
+            ft.PieChartSection(
+                value=float(amount),
+                title=f"{percentage:.0f}%",
+                title_style=ft.TextStyle(
+                    size=10,
+                    color=ft.Colors.WHITE,
+                    weight=ft.FontWeight.BOLD,
+                ),
+                color=color,
+                radius=80 if percentage >= 15 else 70,
+            )
+        )
+    
+    pie_chart = ft.Container(
+        content=ft.PieChart(
+            sections=pie_sections if pie_sections else [
+                ft.PieChartSection(value=1, title="No data", color=theme.text_muted, radius=60)
+            ],
+            center_space_radius=40,
+            sections_space=2,
+        ),
+        height=200,
+        alignment=ft.alignment.center,
+    ) if pie_sections else ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Icon(ft.Icons.PIE_CHART_OUTLINE, size=48, color=theme.text_hint),
+                ft.Text("No expense data", size=14, color=theme.text_muted),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
+        ),
+        height=200,
+        alignment=ft.alignment.center,
+    )
+    
+    # Create Bar Chart for daily spending
+    daily_data = get_daily_expenses(user_id, 7)
+    bar_groups = []
+    max_val = max([d[1] for d in daily_data]) if daily_data else 1
+    
+    for i, (date_str, amount) in enumerate(daily_data):
+        try:
+            day_label = datetime.strptime(date_str, "%Y-%m-%d").strftime("%a")
+        except:
+            day_label = f"D{i+1}"
+        
+        bar_groups.append(
+            ft.BarChartGroup(
+                x=i,
+                bar_rods=[
+                    ft.BarChartRod(
+                        from_y=0,
+                        to_y=amount if amount > 0 else 0.1,
+                        width=20,
+                        color=theme.accent_primary,
+                        tooltip=f"{day_label}: {format_currency(amount, user_currency)}",
+                        border_radius=ft.border_radius.only(top_left=4, top_right=4),
+                    ),
+                ],
+            )
+        )
+    
+    bar_chart = ft.Container(
+        content=ft.BarChart(
+            bar_groups=bar_groups,
+            border=ft.Border(
+                bottom=ft.BorderSide(1, theme.border_primary),
+                left=ft.BorderSide(1, theme.border_primary),
+            ),
+            horizontal_grid_lines=ft.ChartGridLines(
+                color=theme.border_primary,
+                width=1,
+                dash_pattern=[3, 3],
+            ),
+            tooltip_bgcolor=theme.bg_card,
+            max_y=max_val * 1.2 if max_val > 0 else 100,
+            interactive=True,
+            expand=True,
+        ),
+        height=150,
+        padding=ft.padding.only(right=16, top=8),
+    )
+    
+    # Chart type tabs
+    chart_tabs = ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.PIE_CHART, size=16, color=theme.text_primary),
+                            ft.Text("Categories", size=12, color=theme.text_primary),
+                        ],
+                        spacing=4,
+                    ),
+                    bgcolor=theme.accent_primary + "30",
+                    border_radius=20,
+                    padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                ),
+                ft.Container(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.BAR_CHART, size=16, color=theme.text_secondary),
+                            ft.Text("Daily", size=12, color=theme.text_secondary),
+                        ],
+                        spacing=4,
+                    ),
+                    border_radius=20,
+                    padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                ),
+            ],
+            spacing=8,
+        ),
+        padding=ft.padding.only(bottom=12),
+    )
+    
+    # Charts section
+    charts_section = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text("Spending Breakdown", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                ft.Container(height=8),
+                period_buttons,
+                ft.Container(height=16),
+                pie_chart,
+                ft.Container(height=16),
+                ft.Divider(color=theme.border_primary, height=1),
+                ft.Container(height=16),
+                ft.Text("Daily Spending (Last 7 Days)", size=14, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                ft.Container(height=8),
+                bar_chart,
+            ],
+        ),
+        padding=16,
+        border_radius=16,
+        bgcolor=theme.bg_card,
+        border=ft.border.all(1, theme.border_primary),
+    )
+    
+    # Category legend
+    category_legend = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text("Top Categories", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                ft.Container(height=12),
+                *[_category_legend_item(cat["category"], cat["amount"], cat["percentage"], cat["color"], theme, user_currency) 
+                  for cat in top_categories[:5]],
+            ] if top_categories else [
+                ft.Text("Top Categories", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                ft.Container(height=12),
+                ft.Text("No categories yet", size=14, color=theme.text_muted),
+            ],
+        ),
+        padding=16,
+        border_radius=16,
+        bgcolor=theme.bg_card,
+        border=ft.border.all(1, theme.border_primary),
+    )
+    
+    # Highest expense card
+    highest = stats.get("highest_expense")
+    if highest:
+        highest_card = ft.Container(
+            content=ft.Row(
+                controls=[
+                    ft.Container(
+                        content=ft.Icon(ft.Icons.ARROW_UPWARD, color="#EF4444", size=20),
+                        width=40,
+                        height=40,
+                        border_radius=20,
+                        bgcolor="#EF444420",
+                        alignment=ft.alignment.center,
+                    ),
+                    ft.Column(
+                        controls=[
+                            ft.Text("Highest Expense", size=12, color=theme.text_secondary),
+                            ft.Text(highest[3] or highest[2], size=14, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                        ],
+                        spacing=2,
+                        expand=True,
+                    ),
+                    ft.Text(format_currency(highest[1], user_currency), size=16, weight=ft.FontWeight.BOLD, color="#EF4444"),
+                ],
+                spacing=12,
+            ),
+            padding=16,
+            border_radius=16,
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
+        )
+    else:
+        highest_card = ft.Container()
+    
+    # Recent transactions
+    all_expenses = db.select_expenses_by_user(user_id)
+    transactions_header = ft.Row(
+        controls=[
+            ft.Text("Recent Transactions", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
+            ft.TextButton(
+                content=ft.Text("See All", color=theme.accent_primary, size=12),
+                on_click=lambda e: show_expenses() if show_expenses else None,
+            ),
+        ],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+    )
+    
     transactions_list = ft.Column(spacing=8)
-    for exp in expenses[:5]:
+    
+    # Cache account names
+    account_cache = {}
+    def get_account_name(acc_id):
+        if acc_id is None:
+            return None
+        if acc_id not in account_cache:
+            acc = db.get_account_by_id(acc_id, user_id)
+            account_cache[acc_id] = acc[1] if acc else None
+        return account_cache[acc_id]
+    
+    for exp in all_expenses[:5]:
         eid, uid, amount, category, description, date_str, acc_id = exp[:7]
+        acc_name = get_account_name(acc_id)
         transactions_list.controls.append(
             _transaction_item(
                 category=category,
                 description=description or category,
                 amount=amount,
                 date=_format_date(date_str),
-                on_click=lambda e, ex=exp, t=theme: show_transaction_detail(ex, t),
                 theme=theme,
-                account_name=None,
+                account_name=acc_name,
+                user_currency=user_currency,
             )
         )
-    if not expenses:
+    
+    if not all_expenses:
         transactions_list.controls.append(
             ft.Container(
                 content=ft.Column(
@@ -742,118 +1022,12 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
         controls=[
             summary_card,
             ft.Container(height=16),
-            ft.Text("Spending Breakdown", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
-            pie_chart,
-            ft.Container(height=24),
-            ft.Text("Recent Transactions", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
-            transactions_list,
-            ft.Container(height=100),
-        ],
-        scroll=ft.ScrollMode.AUTO,
-        expand=True,
-    )
-    expenses = db.select_expenses_by_user(state["user_id"])
-    today = datetime.now()
-    start_date = today - timedelta(weeks=1)
-    
-    filtered = []
-    for exp in expenses:
-        try:
-            exp_date = datetime.strptime(exp[5], "%Y-%m-%d")
-            if exp_date >= start_date:
-                filtered.append(exp)
-        except:
-            pass
-    
-    total_spent = sum(exp[2] for exp in filtered)
-    
-    # Category breakdown
-    category_totals = {}
-    for exp in filtered:
-        cat = exp[3]
-        amt = exp[2]
-        category_totals[cat] = category_totals.get(cat, 0) + amt
-    
-    # Spending card
-    period_buttons = ft.Row(
-        controls=[
-            ft.Container(
-                content=ft.Text(p, size=12, color="white" if p == "1W" else theme.text_muted),
-                bgcolor=theme.accent_primary if p == "1W" else "transparent",
-                border_radius=16,
-                padding=ft.padding.symmetric(horizontal=16, vertical=8),
-            )
-            for p in ["1D", "1W", "1M", "3M", "1Y"]
-        ],
-        alignment=ft.MainAxisAlignment.CENTER,
-        spacing=8,
-    )
-    
-    spending_card = ft.Container(
-        content=ft.Column(
-            controls=[
-                ft.Text("Total Spent", size=12, color=theme.text_secondary),
-                ft.Text(f"₱{total_spent:,.2f}", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
-                ft.Container(height=16),
-                period_buttons,
-            ],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
-        padding=20,
-        border_radius=16,
-        bgcolor=theme.bg_card,
-        border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
-    )
-    
-    # Transactions header
-    transactions_header = ft.Row(
-        controls=[
-            ft.Text("Recent Transactions", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
-            ft.Text(f"{len(filtered)} items", size=12, color=theme.text_secondary),
-        ],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-    )
-    
-    # Transactions list
-    transactions_list = ft.Column(spacing=8)
-    
-    # Cache account names for efficiency
-    account_cache = {}
-    def get_account_name(acc_id):
-        if acc_id is None:
-            return None
-        if acc_id not in account_cache:
-            acc = db.get_account_by_id(acc_id, state["user_id"])
-            account_cache[acc_id] = acc[1] if acc else None
-        return account_cache[acc_id]
-    
-    for exp in filtered[:10]:
-        eid, uid, amt, cat, dsc, dtt, acc_id = exp[:7]
-        display_name = dsc if dsc else cat
-        acc_name = get_account_name(acc_id)
-        try:
-            dt = datetime.strptime(dtt, "%Y-%m-%d")
-            date_str = dt.strftime("%d %b")
-        except:
-            date_str = dtt
-        
-        transactions_list.controls.append(
-            _transaction_item(cat, display_name, amt, date_str, theme=theme, account_name=acc_name)
-        )
-    
-    if not filtered:
-        transactions_list.controls.append(
-            ft.Container(
-                content=ft.Text("No transactions this period", color="#6B7280", size=14),
-                padding=20,
-                alignment=ft.alignment.center,
-            )
-        )
-    
-    scrollable_content = ft.Column(
-        controls=[
-            spending_card,
-            ft.Container(height=24),
+            charts_section,
+            ft.Container(height=16),
+            category_legend,
+            ft.Container(height=16),
+            highest_card,
+            ft.Container(height=16),
             transactions_header,
             ft.Container(height=12),
             transactions_list,
@@ -889,6 +1063,70 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
         on_profile=show_profile,
         on_fab_click=show_add_expense,
         theme=theme,
+    )
+
+
+# ============ Helper functions for statistics page ============
+
+def _stat_mini_card(icon: str, value: str, label: str, theme):
+    """Create a mini statistic card."""
+    return ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text(icon, size=16),
+                ft.Text(value, size=14, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                ft.Text(label, size=10, color=theme.text_secondary),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=2,
+        ),
+        padding=ft.padding.symmetric(horizontal=12, vertical=8),
+        border_radius=8,
+        bgcolor=theme.bg_primary,
+    )
+
+
+def _create_period_chip(period: str, selected: str, on_click, theme):
+    """Create a period selection chip."""
+    is_selected = period == selected
+    return ft.Container(
+        content=ft.Text(
+            period,
+            size=12,
+            color="white" if is_selected else theme.text_muted,
+            weight=ft.FontWeight.W_600 if is_selected else ft.FontWeight.NORMAL,
+        ),
+        bgcolor=theme.accent_primary if is_selected else "transparent",
+        border_radius=16,
+        padding=ft.padding.symmetric(horizontal=14, vertical=6),
+        on_click=lambda e: on_click(period),
+        ink=True,
+    )
+
+
+def _category_legend_item(category: str, amount: float, percentage: float, color: str, theme, user_currency: str = None):
+    """Create a category legend item with progress bar."""
+    return ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.Container(
+                    width=12,
+                    height=12,
+                    border_radius=3,
+                    bgcolor=color,
+                ),
+                ft.Text(category, size=13, color=theme.text_primary, expand=True),
+                ft.Text(format_currency(amount, user_currency), size=13, color=theme.text_secondary, weight=ft.FontWeight.W_500),
+                ft.Container(
+                    content=ft.Text(f"{percentage:.0f}%", size=11, color=theme.text_muted),
+                    width=40,
+                    alignment=ft.alignment.center_right,
+                ),
+            ],
+            spacing=12,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=ft.padding.symmetric(vertical=6),
     )
 
 
@@ -989,7 +1227,7 @@ def _get_category_color(category: str):
     return "#6366F1"
 
 
-def _transaction_item(category: str, description: str, amount: float, date: str, on_click=None, theme=None, account_name: str = None):
+def _transaction_item(category: str, description: str, amount: float, date: str, on_click=None, theme=None, account_name: str = None, user_currency: str = None):
     """Create a transaction list item with brand logos."""
     if theme is None:
         from core.theme import get_theme
@@ -1055,7 +1293,7 @@ def _transaction_item(category: str, description: str, amount: float, date: str,
     # Amount badge
     amount_badge = ft.Container(
         content=ft.Text(
-            f"-₱{amount:,.2f}",
+            f"-{format_currency(amount, user_currency)}",
             size=12,
             weight=ft.FontWeight.W_600,
             color=theme.error,

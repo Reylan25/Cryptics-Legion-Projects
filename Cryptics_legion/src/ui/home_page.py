@@ -4,6 +4,7 @@ from datetime import datetime
 from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
+from utils.currency import format_currency, format_currency_short, get_currency_from_user_profile, get_currency_symbol
 import random
 import math
 
@@ -141,7 +142,7 @@ TIPS = [
 ]
 
 
-def create_circular_gauge(balance: float, total_budget: float = 100000, size: int = 250, theme=None, account_name: str = None):
+def create_circular_gauge(balance: float, total_budget: float = 100000, size: int = 250, theme=None, account_name: str = None, user_currency: str = "PHP"):
     """
     Creates a premium circular gauge with smooth gradient arc and glassmorphism effect.
     The colored portion represents the remaining balance percentage.
@@ -328,13 +329,8 @@ def create_circular_gauge(balance: float, total_budget: float = 100000, size: in
     else:
         balance_color = "#ef4444"
     
-    # Format balance for display
-    if balance >= 1000000:
-        balance_display = f"₱{balance/1000000:.2f}M"
-    elif balance >= 10000:
-        balance_display = f"₱{balance/1000:.1f}K"
-    else:
-        balance_display = f"₱{balance:,.0f}"
+    # Format balance for display using currency utilities
+    balance_display = format_currency_short(balance, user_currency)
     
     # Center glassmorphism container
     center_bg = ft.Container(
@@ -495,7 +491,7 @@ def create_user_avatar(user_id: int, radius: int = 22, theme=None):
     )
 
 
-def create_expense_item(brand_text: str, category: str, date: str, amount: float, on_click=None, theme=None, account_name: str = None):
+def create_expense_item(brand_text: str, category: str, date: str, amount: float, on_click=None, theme=None, account_name: str = None, user_currency: str = "PHP"):
     """Creates a modern expense item row with brand logos and theme support."""
     from core.theme import get_theme
     if theme is None:
@@ -503,7 +499,8 @@ def create_expense_item(brand_text: str, category: str, date: str, amount: float
     
     # Format amount with sign and determine colors
     is_expense = amount < 0
-    amount_str = f"-₱{abs(amount):,.2f}" if is_expense else f"+₱{amount:,.2f}"
+    currency_symbol = get_currency_symbol(user_currency)
+    amount_str = f"-{currency_symbol}{abs(amount):,.2f}" if is_expense else f"+{currency_symbol}{amount:,.2f}"
     
     # Theme-aware colors
     if is_expense:
@@ -650,6 +647,10 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
     expenses_list = ft.Column(spacing=4)
     gauge_container = ft.Container()
     
+    # Get user's currency preference
+    user_profile = db.get_user_profile(state["user_id"])
+    user_currency = get_currency_from_user_profile(user_profile)
+    
     def format_date(date_str: str) -> str:
         """Format date string to display format."""
         try:
@@ -676,6 +677,7 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
                     category=cat,
                     date=format_date(dtt),
                     amount=-amt,  # Expenses are negative
+                    user_currency=user_currency,
                 )
             )
         
@@ -725,7 +727,8 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
         gauge_container.content = create_circular_gauge(
             balance=current_balance if current_balance > 0 else 0, 
             total_budget=original_budget if original_budget > 0 else 100000, 
-            account_name=account_name
+            account_name=account_name,
+            user_currency=user_currency
         )
         page.update()
     
@@ -796,7 +799,8 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
             balance=current_balance if current_balance > 0 else 0, 
             total_budget=original_budget if original_budget > 0 else 100000, 
             theme=theme, 
-            account_name=selected_account_name
+            account_name=selected_account_name,
+            user_currency=user_currency
         )
         load_expenses()
         
@@ -1001,6 +1005,9 @@ def build_home_content(page: ft.Page, state: dict, toast,
     user_profile = db.get_user_profile(state["user_id"])
     first_name = user_profile.get("firstName", "User") if user_profile else "User"
     
+    # Get user's currency preference
+    user_currency = get_currency_from_user_profile(user_profile)
+    
     # Get selected account and balance data
     selected_account = db.get_selected_account(state["user_id"])
     if selected_account:
@@ -1047,6 +1054,7 @@ def build_home_content(page: ft.Page, state: dict, toast,
                 amount=-amt,
                 theme=theme,
                 account_name=acc_name,
+                user_currency=user_currency,
             )
         )
     
@@ -1102,6 +1110,7 @@ def build_home_content(page: ft.Page, state: dict, toast,
         balance=current_balance,
         total_budget=original_budget,
         account_name=account_name,
+        user_currency=user_currency,
     )
     
     gauge_section = ft.Container(

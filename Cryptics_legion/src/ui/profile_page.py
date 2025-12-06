@@ -2,6 +2,7 @@
 import flet as ft
 from core import db
 from core.theme import ThemeManager, get_theme
+from utils.currency import format_currency, get_currency_from_user_profile
 
 
 def create_user_avatar(user_id: int, radius: int = 50, theme=None):
@@ -54,6 +55,9 @@ def create_user_avatar(user_id: int, radius: int = 50, theme=None):
 
 def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callback, show_account_settings=None, refresh_app=None):
     """Create the profile/settings page with theme support."""
+    user_id = state["user_id"]
+    user_profile = db.get_user_profile(user_id)
+    user_currency = get_currency_from_user_profile(user_profile)
     
     def show_view():
         page.clean()
@@ -132,7 +136,7 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Text(f"₱{total_spent:,.0f}", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ft.Text(format_currency(total_spent, user_currency), size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                             ft.Text("Total Spent", size=11, color=theme.text_secondary),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -359,6 +363,9 @@ def build_profile_content(page: ft.Page, state: dict, toast,
     if not display_name:
         display_name = user_profile.get("username", f"User #{state['user_id']}") if user_profile else f"User #{state['user_id']}"
     
+    # Get user currency
+    user_currency = get_currency_from_user_profile(user_profile) if user_profile else "PHP"
+    
     # Get user stats
     total_spent = db.total_expenses_by_user(state["user_id"])
     transactions = len(db.select_expenses_by_user(state["user_id"]))
@@ -401,7 +408,7 @@ def build_profile_content(page: ft.Page, state: dict, toast,
             controls=[
                 ft.Column(
                     controls=[
-                        ft.Text(f"₱{total_spent:,.0f}", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                        ft.Text(format_currency(total_spent, user_currency), size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                         ft.Text("Total Spent", size=11, color=theme.text_secondary),
                     ],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,

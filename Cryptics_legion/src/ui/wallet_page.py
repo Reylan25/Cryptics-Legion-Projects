@@ -3,6 +3,7 @@ import flet as ft
 from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
+from utils.currency import format_currency, get_currency_from_user_profile
 
 
 def create_user_avatar(user_id: int, radius: int = 22, theme=None):
@@ -56,6 +57,10 @@ def create_user_avatar(user_id: int, radius: int = 22, theme=None):
 def create_wallet_view(page: ft.Page, state: dict, toast, go_back, 
                        show_expenses=None, show_profile=None, show_add_expense=None):
     """Create the wallet/budget page."""
+    theme = get_theme()
+    user_id = state.get("user_id")
+    user_profile = db.get_user_profile(user_id)
+    user_currency = get_currency_from_user_profile(user_profile)
     
     def nav_home():
         """Navigate to home."""
@@ -114,7 +119,7 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back,
                     ft.Row(
                         controls=[
                             ft.Text("Monthly Budget", size=14, color="#9CA3AF"),
-                            ft.Text(f"₱{budget:,.2f}", size=14, color="white", weight=ft.FontWeight.W_500),
+                            ft.Text(format_currency(budget, user_currency), size=14, color="white", weight=ft.FontWeight.W_500),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -142,14 +147,14 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back,
                             ft.Column(
                                 controls=[
                                     ft.Text("Spent", size=12, color="#9CA3AF"),
-                                    ft.Text(f"₱{total_spent:,.2f}", size=18, weight=ft.FontWeight.BOLD, color="#EF4444"),
+                                    ft.Text(format_currency(total_spent, user_currency), size=18, weight=ft.FontWeight.BOLD, color="#EF4444"),
                                 ],
                                 spacing=2,
                             ),
                             ft.Column(
                                 controls=[
                                     ft.Text("Remaining", size=12, color="#9CA3AF"),
-                                    ft.Text(f"₱{remaining:,.2f}", size=18, weight=ft.FontWeight.BOLD, 
+                                    ft.Text(format_currency(remaining, user_currency), size=18, weight=ft.FontWeight.BOLD, 
                                            color="#10B981" if remaining > 0 else "#EF4444"),
                                 ],
                                 spacing=2,
@@ -187,7 +192,7 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back,
                                 border_radius=4,
                             ),
                             ft.Text(cat, size=14, color="white", expand=True),
-                            ft.Text(f"₱{amount:,.2f}", size=14, color="#9CA3AF"),
+                            ft.Text(format_currency(amount, user_currency), size=14, color="#9CA3AF"),
                             ft.Text(f"{cat_percent:.1f}%", size=12, color=color, width=50, text_align=ft.TextAlign.RIGHT),
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,

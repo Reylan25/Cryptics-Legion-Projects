@@ -8,17 +8,25 @@ from core import auth
 def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete, on_back=None):
     """Create the Personal Details form page after account creation."""
     
-    # Theme colors
+    # Theme colors - using login page gradient background
     BG_COLOR = "#0a0a0a"
-    CARD_BG = "#1a1a1a"
-    FIELD_BG = "#252525"
-    BORDER_COLOR = "#333333"
+    BG_GRADIENT_START = "#1a1a2e"
+    BG_GRADIENT_MID = "#16213e"
+    BG_GRADIENT_END = "#0f3460"
+    CARD_BG = "#1a1a2e"  # Match gradient start for glassmorphism effect
+    CARD_BG_LIGHT = "#1e2746"  # Slightly lighter for sections
+    FIELD_BG = "#252545"  # Dark purple-tinted field background
+    BORDER_COLOR = "#3a3a5a"  # Purple-tinted border
+    BORDER_ACCENT = "#4a4a7a"  # Lighter border for hover effects
     TEXT_PRIMARY = "#FFFFFF"
     TEXT_SECONDARY = "#9CA3AF"
     TEXT_MUTED = "#6B7280"
     TEAL_ACCENT = "#14B8A6"
     TEAL_LIGHT = "#2DD4BF"
     TEAL_BG = "#0D3D38"
+    ERROR_COLOR = "#EF4444"
+    SUCCESS_COLOR = "#2E7D32"
+    PURPLE_ACCENT = "#8B5CF6"  # Purple accent for variety
     
     def show_view():
         """Render the personal details view."""
@@ -702,7 +710,7 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                 error_texts[key].value = message
                 error_texts[key].visible = True
             if key in field_containers:
-                field_containers[key].border = ft.border.all(1.5, "#EF4444")
+                field_containers[key].border = ft.border.all(1.5, ERROR_COLOR)
             page.update()
         
         def clear_field_error(key: str):
@@ -717,6 +725,50 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
             for key in error_texts:
                 clear_field_error(key)
         
+        def show_validation_dialog(title: str, message: str, icon_name: str = ft.Icons.ERROR_OUTLINE):
+            """Show a validation error dialog popup."""
+            dlg = ft.AlertDialog(
+                title=ft.Text(title, size=20, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(icon_name, size=32, color=ERROR_COLOR if icon_name == ft.Icons.ERROR_OUTLINE else TEAL_ACCENT),
+                        ft.Text(message, size=14, color=TEXT_SECONDARY, expand=True),
+                    ], spacing=16),
+                ], tight=True),
+                actions=[
+                    ft.TextButton(
+                        "OK",
+                        style=ft.ButtonStyle(color=TEAL_ACCENT),
+                        on_click=lambda e: page.close(dlg),
+                    ),
+                ],
+                bgcolor=CARD_BG,
+                surface_tint_color=TEAL_ACCENT,
+            )
+            page.open(dlg)
+        
+        def show_success_dialog(title: str, message: str):
+            """Show a success dialog."""
+            dlg = ft.AlertDialog(
+                title=ft.Text(title, size=20, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.CHECK_CIRCLE_ROUNDED, size=32, color=SUCCESS_COLOR),
+                        ft.Text(message, size=14, color=TEXT_SECONDARY, expand=True),
+                    ], spacing=16),
+                ], tight=True),
+                actions=[
+                    ft.TextButton(
+                        "Continue",
+                        style=ft.ButtonStyle(color=TEAL_ACCENT),
+                        on_click=lambda e: (page.close(dlg), on_complete()),
+                    ),
+                ],
+                bgcolor=CARD_BG,
+                surface_tint_color=SUCCESS_COLOR,
+            )
+            page.open(dlg)
+        
         def handle_continue(e):
             """Handle continue button click with validation."""
             # Clear previous errors
@@ -728,34 +780,43 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
             username = form_data["username"].strip() if form_data["username"] else ""
             is_valid_username, username_error = validate_username(username)
             if not is_valid_username:
-                show_field_error("username", username_error)
+                show_validation_dialog("Invalid Username", username_error)
                 has_errors = True
+            
+            if has_errors:
+                return
             
             # Validate full name
             if not form_data["full_name"].strip():
-                show_field_error("full_name", "Please enter full name")
+                show_validation_dialog("Full Name Required", "Please enter your full name. This will be your account identifier.")
                 has_errors = True
+            
+            if has_errors:
+                return
             
             # Validate email
             if not form_data["email"].strip():
-                show_field_error("email", "Please enter email")
+                show_validation_dialog("Email Required", "Please enter your email address for account verification.")
                 has_errors = True
             else:
                 # Basic email validation
                 email = form_data["email"].strip()
                 if "@" not in email or "." not in email:
-                    show_field_error("email", "Invalid email format")
+                    show_validation_dialog("Invalid Email", "Please enter a valid email address (e.g., user@example.com).")
                     has_errors = True
+            
+            if has_errors:
+                return
             
             # Validate phone
             if not form_data["phone"].strip():
-                show_field_error("phone", "Please enter phone number")
+                show_validation_dialog("Phone Number Required", "Please enter your phone number for account recovery.")
                 has_errors = True
             else:
                 # Phone number should have at least 10 digits
                 phone_digits = ''.join(filter(str.isdigit, form_data["phone"]))
                 if len(phone_digits) < 10:
-                    show_field_error("phone", "At least 10 digits required")
+                    show_validation_dialog("Invalid Phone Number", "Please enter a valid phone number with at least 10 digits.")
                     has_errors = True
             
             if has_errors:
@@ -764,20 +825,20 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
             # Get password from state (set by register page)
             password = state.get("temp_password")
             if not password:
-                toast("Session expired. Please start registration again.", "#b71c1c")
+                show_validation_dialog("Session Expired", "Your registration session has expired. Please start registration again.")
                 return
             
             # Create the user account
             try:
                 ok = auth.register_user(username, password)
                 if not ok:
-                    toast("Username already exists. Please choose another.", "#b71c1c")
+                    show_validation_dialog("Username Taken", f"The username '{username}' is already taken. Please choose a different username.")
                     return
                 
                 # Get the new user_id
                 user_row = db.get_user_by_username(username)
                 if not user_row:
-                    toast("Failed to create account", "#b71c1c")
+                    show_validation_dialog("Account Creation Failed", "Failed to create account. Please try again.")
                     return
                 
                 user_id = user_row[0]
@@ -789,24 +850,25 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                 # Save personal details to database
                 saved = db.save_personal_details(user_id, form_data)
                 if saved:
-                    toast("Account created successfully!", "#2E7D32")
+                    show_success_dialog(
+                        "Account Created Successfully!",
+                        f"Welcome, {form_data['full_name']}! Your account '{username}' is ready to use. Let's start tracking your expenses!"
+                    )
                 else:
-                    toast("Account created but failed to save details", "#F59E0B")
+                    show_validation_dialog("Partial Success", "Account created but failed to save some details. You can update them in settings later.")
+                    on_complete()
                 
                 # Save to state as well
                 state["personal_details"] = form_data
-                
-                if on_complete:
-                    on_complete()
-                    
+            
             except Exception as ex:
-                toast(f"Error creating account: {str(ex)}", "#b71c1c")
+                show_validation_dialog("Error", f"An error occurred: {str(ex)}")
         
         # Main content
         content = ft.Container(
             content=ft.Column(
                 controls=[
-                    # Header with back button
+                    # Header with back button - improved styling
                     ft.Container(
                         content=ft.Column(
                             controls=[
@@ -814,38 +876,88 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                                     content=ft.Row(
                                         controls=[
                                             ft.Container(
-                                                content=ft.Icon(ft.Icons.ARROW_BACK_IOS_NEW_ROUNDED, size=20, color=TEXT_PRIMARY),
-                                                width=40,
-                                                height=40,
-                                                border_radius=20,
-                                                bgcolor=FIELD_BG,
+                                                content=ft.Icon(ft.Icons.ARROW_BACK_IOS_NEW_ROUNDED, size=18, color=TEXT_PRIMARY),
+                                                width=44,
+                                                height=44,
+                                                border_radius=22,
+                                                bgcolor=CARD_BG,
+                                                border=ft.border.all(1, BORDER_COLOR),
                                                 alignment=ft.alignment.center,
                                                 on_click=lambda e: on_back() if on_back else None,
                                                 ink=True,
+                                                shadow=ft.BoxShadow(
+                                                    spread_radius=0,
+                                                    blur_radius=8,
+                                                    color="#00000030",
+                                                    offset=ft.Offset(0, 2),
+                                                ),
                                             ),
-                                            ft.Text("Back", size=14, color=TEXT_SECONDARY),
+                                            ft.Container(width=8),
+                                            ft.Text("Back", size=14, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
                                         ],
-                                        spacing=8,
                                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                    ),
+                                    padding=ft.padding.only(top=12),
+                                ),
+                                ft.Container(height=20),
+                                # Title with icon
+                                ft.Row(
+                                    controls=[
+                                        ft.Container(
+                                            content=ft.Icon(ft.Icons.PERSON_ADD_ROUNDED, size=28, color=TEAL_ACCENT),
+                                            width=52,
+                                            height=52,
+                                            border_radius=16,
+                                            bgcolor=TEAL_BG,
+                                            alignment=ft.alignment.center,
+                                        ),
+                                        ft.Container(width=12),
+                                        ft.Column(
+                                            controls=[
+                                                ft.Text(
+                                                    "Personal Information",
+                                                    size=24,
+                                                    weight=ft.FontWeight.BOLD,
+                                                    color=TEXT_PRIMARY,
+                                                ),
+                                                ft.Text(
+                                                    "Complete your profile to get started",
+                                                    size=13,
+                                                    color=TEXT_SECONDARY,
+                                                ),
+                                            ],
+                                            spacing=2,
+                                        ),
+                                    ],
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                ),
+                                ft.Container(height=8),
+                                # Progress indicator
+                                ft.Container(
+                                    content=ft.Row(
+                                        controls=[
+                                            ft.Container(
+                                                width=100,
+                                                height=4,
+                                                border_radius=2,
+                                                bgcolor=TEAL_ACCENT,
+                                            ),
+                                            ft.Container(
+                                                width=100,
+                                                height=4,
+                                                border_radius=2,
+                                                bgcolor=BORDER_COLOR,
+                                            ),
+                                        ],
+                                        spacing=4,
                                     ),
                                     padding=ft.padding.only(top=8),
                                 ),
-                                ft.Container(height=8),
-                                ft.Text(
-                                    "Personal Information",
-                                    size=28,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=TEXT_PRIMARY,
-                                ),
-                                ft.Text(
-                                    "Complete your profile to personalize your experience",
-                                    size=14,
-                                    color=TEXT_SECONDARY,
-                                ),
+                                ft.Text("Step 1 of 2", size=11, color=TEXT_MUTED),
                             ],
                             spacing=4,
                         ),
-                        padding=ft.padding.only(left=20, right=20, top=16, bottom=8),
+                        padding=ft.padding.only(left=20, right=20, top=16, bottom=16),
                     ),
                     
                     # Scrollable form
@@ -856,28 +968,53 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                                 ft.Container(
                                     content=ft.Column(
                                         controls=[
-                                            # Photo upload section
+                                            # Photo upload section - enhanced
                                             ft.Container(
                                                 content=ft.Column(
                                                     controls=[
-                                                        photo_container,
-                                                        ft.Container(height=8),
-                                                        ft.Text("Upload Photo", size=14, color=TEAL_ACCENT, weight=ft.FontWeight.W_500),
+                                                        ft.Container(
+                                                            content=photo_container,
+                                                            shadow=ft.BoxShadow(
+                                                                spread_radius=0,
+                                                                blur_radius=15,
+                                                                color="#14B8A630",
+                                                                offset=ft.Offset(0, 4),
+                                                            ),
+                                                        ),
+                                                        ft.Container(height=12),
+                                                        ft.Text("Upload Photo", size=15, color=TEAL_ACCENT, weight=ft.FontWeight.W_600),
                                                         ft.Text("Tap to add your profile picture", size=12, color=TEXT_MUTED),
                                                     ],
                                                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                                     spacing=2,
                                                 ),
                                                 alignment=ft.alignment.center,
-                                                padding=ft.padding.only(top=8, bottom=16),
+                                                padding=ft.padding.only(top=12, bottom=20),
                                             ),
                                             
-                                            ft.Divider(height=1, color=BORDER_COLOR),
-                                            ft.Container(height=8),
+                                            ft.Container(
+                                                content=ft.Divider(height=1, color=BORDER_COLOR),
+                                                padding=ft.padding.symmetric(horizontal=8),
+                                            ),
+                                            ft.Container(height=16),
                                             
-                                            # Section: Basic Info
-                                            ft.Text("Basic Information", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
-                                            ft.Container(height=8),
+                                            # Section: Basic Info - with icon
+                                            ft.Row(
+                                                controls=[
+                                                    ft.Container(
+                                                        content=ft.Icon(ft.Icons.BADGE_ROUNDED, size=18, color=TEAL_ACCENT),
+                                                        width=32,
+                                                        height=32,
+                                                        border_radius=8,
+                                                        bgcolor=TEAL_BG,
+                                                        alignment=ft.alignment.center,
+                                                    ),
+                                                    ft.Container(width=8),
+                                                    ft.Text("Basic Information", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
+                                                ],
+                                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                            ),
+                                            ft.Container(height=12),
                                             
                                             create_username_field(),
                                             ft.Container(height=12),
@@ -902,12 +1039,29 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                                             create_phone_field(),
                                             
                                             ft.Container(height=24),
-                                            ft.Divider(height=1, color=BORDER_COLOR),
+                                            ft.Container(
+                                                content=ft.Divider(height=1, color=BORDER_COLOR),
+                                                padding=ft.padding.symmetric(horizontal=8),
+                                            ),
                                             ft.Container(height=16),
                                             
-                                            # Section: Financial Settings
-                                            ft.Text("Financial Settings", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
-                                            ft.Container(height=8),
+                                            # Section: Financial Settings - with icon
+                                            ft.Row(
+                                                controls=[
+                                                    ft.Container(
+                                                        content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED, size=18, color=PURPLE_ACCENT),
+                                                        width=32,
+                                                        height=32,
+                                                        border_radius=8,
+                                                        bgcolor="#8B5CF620",
+                                                        alignment=ft.alignment.center,
+                                                    ),
+                                                    ft.Container(width=8),
+                                                    ft.Text("Financial Settings", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
+                                                ],
+                                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                            ),
+                                            ft.Container(height=12),
                                             
                                             create_dropdown_field(
                                                 "Primary Currency",
@@ -918,12 +1072,29 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                                             ),
                                             
                                             ft.Container(height=24),
-                                            ft.Divider(height=1, color=BORDER_COLOR),
+                                            ft.Container(
+                                                content=ft.Divider(height=1, color=BORDER_COLOR),
+                                                padding=ft.padding.symmetric(horizontal=8),
+                                            ),
                                             ft.Container(height=16),
                                             
-                                            # Section: Locale Settings
-                                            ft.Text("Locale Settings", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
-                                            ft.Container(height=8),
+                                            # Section: Locale Settings - with icon
+                                            ft.Row(
+                                                controls=[
+                                                    ft.Container(
+                                                        content=ft.Icon(ft.Icons.LANGUAGE_ROUNDED, size=18, color="#F59E0B"),
+                                                        width=32,
+                                                        height=32,
+                                                        border_radius=8,
+                                                        bgcolor="#F59E0B20",
+                                                        alignment=ft.alignment.center,
+                                                    ),
+                                                    ft.Container(width=8),
+                                                    ft.Text("Locale Settings", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
+                                                ],
+                                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                            ),
+                                            ft.Container(height=12),
                                             
                                             create_dropdown_field(
                                                 "Time Zone",
@@ -947,35 +1118,45 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                                         spacing=0,
                                     ),
                                     bgcolor=CARD_BG,
-                                    border_radius=20,
-                                    padding=ft.padding.all(20),
+                                    border_radius=24,
+                                    padding=ft.padding.all(24),
                                     margin=ft.margin.only(left=16, right=16, bottom=16),
                                     border=ft.border.all(1, BORDER_COLOR),
+                                    shadow=ft.BoxShadow(
+                                        spread_radius=0,
+                                        blur_radius=20,
+                                        color="#00000040",
+                                        offset=ft.Offset(0, 8),
+                                    ),
                                 ),
                                 
                                 # Continue button
                                 ft.Container(
-                                    content=ft.ElevatedButton(
+                                    content=ft.Container(
                                         content=ft.Row(
                                             controls=[
-                                                ft.Text("Continue", size=16, weight=ft.FontWeight.W_600),
-                                                ft.Icon(ft.Icons.ARROW_FORWARD_ROUNDED, size=20),
+                                                ft.Text("Continue", size=16, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                                                ft.Icon(ft.Icons.ARROW_FORWARD_ROUNDED, size=20, color=TEXT_PRIMARY),
                                             ],
                                             alignment=ft.MainAxisAlignment.CENTER,
                                             spacing=8,
                                         ),
-                                        style=ft.ButtonStyle(
-                                            bgcolor={
-                                                ft.ControlState.DEFAULT: TEAL_ACCENT,
-                                                ft.ControlState.HOVERED: TEAL_LIGHT,
-                                            },
-                                            color={ft.ControlState.DEFAULT: TEXT_PRIMARY},
-                                            elevation=0,
-                                            padding=ft.padding.symmetric(vertical=16),
-                                            shape=ft.RoundedRectangleBorder(radius=14),
+                                        gradient=ft.LinearGradient(
+                                            begin=ft.alignment.center_left,
+                                            end=ft.alignment.center_right,
+                                            colors=[TEAL_ACCENT, "#0891b2"],
                                         ),
+                                        border_radius=16,
+                                        padding=ft.padding.symmetric(vertical=18),
+                                        alignment=ft.alignment.center,
                                         on_click=handle_continue,
-                                        width=float("inf"),
+                                        ink=True,
+                                        shadow=ft.BoxShadow(
+                                            spread_radius=0,
+                                            blur_radius=15,
+                                            color="#14B8A640",
+                                            offset=ft.Offset(0, 4),
+                                        ),
                                     ),
                                     padding=ft.padding.only(left=16, right=16, bottom=32),
                                 ),
@@ -989,7 +1170,11 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                 spacing=0,
                 expand=True,
             ),
-            bgcolor=BG_COLOR,
+            gradient=ft.LinearGradient(
+                begin=ft.alignment.top_center,
+                end=ft.alignment.bottom_center,
+                colors=[BG_GRADIENT_START, BG_COLOR, BG_GRADIENT_END],
+            ),
             expand=True,
         )
         
@@ -1005,15 +1190,20 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
     Builds and returns personal details page content WITHOUT calling page.clean() or page.add().
     This is a simplified version - for full functionality, use create_personal_details_view.
     """
-    # Theme colors
+    # Theme colors - using login page gradient background
     BG_COLOR = "#0a0a0a"
-    CARD_BG = "#1a1a1a"
-    FIELD_BG = "#252525"
-    BORDER_COLOR = "#333333"
+    BG_GRADIENT_START = "#1a1a2e"
+    BG_GRADIENT_END = "#0f3460"
+    CARD_BG = "#1a1a2e"
+    FIELD_BG = "#252545"
+    BORDER_COLOR = "#3a3a5a"
     TEXT_PRIMARY = "#FFFFFF"
     TEXT_SECONDARY = "#9CA3AF"
     TEXT_MUTED = "#6B7280"
     TEAL_ACCENT = "#14B8A6"
+    TEAL_BG = "#0D3D38"
+    ERROR_COLOR = "#EF4444"
+    SUCCESS_COLOR = "#2E7D32"
     
     form_data = {"username": "", "full_name": "", "email": "", "phone": "", "currency": "PHP"}
     
@@ -1047,22 +1237,35 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
         email = form_data["email"].strip()
         phone = form_data["phone"].strip()
         
+        # Validation with detailed messages
         if not username:
-            toast("Please enter a username", "#EF4444")
+            show_validation_dialog(page, "Username Required", "Please enter a username for your account.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
         if len(username) < 3:
-            toast("Username must be at least 3 characters", "#EF4444")
+            show_validation_dialog(page, "Invalid Username", "Username must be at least 3 characters long.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
         
         # Check if username exists
         if db.get_user_by_username(username):
-            toast("Username already taken", "#EF4444")
+            show_validation_dialog(page, "Username Taken", f"The username '{username}' is already taken. Please choose another.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
+            return
+        
+        if not full_name:
+            show_validation_dialog(page, "Full Name Required", "Please enter your full name to complete your profile.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
+            return
+        
+        if not email:
+            show_validation_dialog(page, "Email Required", "Please enter your email address for account verification.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
+            return
+        
+        if not phone:
+            show_validation_dialog(page, "Phone Required", "Please enter your phone number for account recovery.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
         
         # Register user
         password = state.get("temp_password", "")
         if not password:
-            toast("Session expired. Please start registration again.", "#EF4444")
+            show_validation_dialog(page, "Session Expired", "Your registration session has expired. Please start over.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
             
         ok = auth.register_user(username, password)
@@ -1071,7 +1274,7 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             # Get the new user_id
             user_row = db.get_user_by_username(username)
             if not user_row:
-                toast("Failed to retrieve user account", "#EF4444")
+                show_validation_dialog(page, "Error", "Failed to retrieve your account. Please try again.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
                 return
             
             user_id = user_row[0]
@@ -1091,39 +1294,105 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             }
             db.save_personal_details(user_id, profile_data)
             
-            toast("Account created successfully!", TEAL_ACCENT)
-            on_complete()
+            # Show success dialog
+            dlg = ft.AlertDialog(
+                title=ft.Text("Account Created Successfully!", size=20, weight=ft.FontWeight.BOLD, color=TEXT_PRIMARY),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.CHECK_CIRCLE_ROUNDED, size=32, color=SUCCESS_COLOR),
+                        ft.Text(f"Welcome, {full_name}! Your account is ready.", size=14, color=TEXT_SECONDARY, expand=True),
+                    ], spacing=16),
+                ], tight=True),
+                actions=[
+                    ft.TextButton(
+                        "Continue",
+                        style=ft.ButtonStyle(color=TEAL_ACCENT),
+                        on_click=lambda e: (page.close(dlg), on_complete()),
+                    ),
+                ],
+                bgcolor=CARD_BG,
+            )
+            page.open(dlg)
         else:
-            toast("Failed to create account", "#EF4444")
+            show_validation_dialog(page, "Registration Failed", "Failed to create account. Please try again.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
     
-    # Header
+    # Helper function for validation dialogs
+    def show_validation_dialog(page_ref, title: str, message: str, card_bg: str, text_primary: str, text_secondary: str, error_color: str, teal_accent: str):
+        """Show a validation error dialog popup."""
+        dlg = ft.AlertDialog(
+            title=ft.Text(title, size=20, weight=ft.FontWeight.BOLD, color=text_primary),
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.ERROR_OUTLINE, size=32, color=error_color),
+                    ft.Text(message, size=14, color=text_secondary, expand=True),
+                ], spacing=16),
+            ], tight=True),
+            actions=[
+                ft.TextButton(
+                    "OK",
+                    style=ft.ButtonStyle(color=teal_accent),
+                    on_click=lambda e: page_ref.close(dlg),
+                ),
+            ],
+            bgcolor=card_bg,
+        )
+        page_ref.open(dlg)
+    
+    # Header - improved styling
     header = ft.Container(
-        content=ft.Row([
-            ft.IconButton(
-                icon=ft.Icons.ARROW_BACK_ROUNDED,
-                icon_color=TEXT_PRIMARY,
-                icon_size=22,
-                on_click=lambda e: on_back() if on_back else None,
-            ),
-            ft.Column([
-                ft.Text("Personal Details", size=20, color=TEXT_PRIMARY, weight=ft.FontWeight.BOLD),
-                ft.Text("Tell us about yourself", size=12, color=TEXT_SECONDARY),
-            ], spacing=2, expand=True),
+        content=ft.Column([
+            ft.Row([
+                ft.Container(
+                    content=ft.Icon(ft.Icons.ARROW_BACK_IOS_NEW_ROUNDED, size=18, color=TEXT_PRIMARY),
+                    width=44,
+                    height=44,
+                    border_radius=22,
+                    bgcolor=CARD_BG,
+                    border=ft.border.all(1, BORDER_COLOR),
+                    alignment=ft.alignment.center,
+                    on_click=lambda e: on_back() if on_back else None,
+                    ink=True,
+                ),
+                ft.Container(width=12),
+                ft.Column([
+                    ft.Text("Personal Details", size=20, color=TEXT_PRIMARY, weight=ft.FontWeight.BOLD),
+                    ft.Text("Tell us about yourself", size=12, color=TEXT_SECONDARY),
+                ], spacing=2, expand=True),
+                ft.Container(
+                    content=ft.Text("1/2", size=12, color=TEAL_ACCENT, weight=ft.FontWeight.W_600),
+                    bgcolor=TEAL_BG,
+                    border_radius=20,
+                    padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                ),
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Container(height=12),
+            # Progress bar
             ft.Container(
-                content=ft.Text("1/2", size=12, color=TEXT_SECONDARY),
-                bgcolor=FIELD_BG,
-                border_radius=20,
-                padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                content=ft.Row([
+                    ft.Container(width=100, height=4, border_radius=2, bgcolor=TEAL_ACCENT),
+                    ft.Container(width=100, height=4, border_radius=2, bgcolor=BORDER_COLOR),
+                ], spacing=4),
             ),
-        ]),
-        padding=ft.padding.only(left=8, right=16, top=16, bottom=8),
+        ], spacing=4),
+        padding=ft.padding.only(left=16, right=16, top=16, bottom=8),
     )
     
-    # Form fields
+    # Form fields - improved styling
     form = ft.Container(
         content=ft.Column([
-            ft.Text("Account Info", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
-            ft.Container(height=8),
+            ft.Row([
+                ft.Container(
+                    content=ft.Icon(ft.Icons.BADGE_ROUNDED, size=18, color=TEAL_ACCENT),
+                    width=32,
+                    height=32,
+                    border_radius=8,
+                    bgcolor=TEAL_BG,
+                    alignment=ft.alignment.center,
+                ),
+                ft.Container(width=8),
+                ft.Text("Account Info", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Container(height=16),
             create_field("Username", "Choose a username", ft.Icons.ALTERNATE_EMAIL_ROUNDED, "username"),
             ft.Container(height=12),
             create_field("Full Name", "Enter your full name", ft.Icons.PERSON_OUTLINE_ROUNDED, "full_name"),
@@ -1133,27 +1402,41 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             create_field("Phone", "Enter phone number", ft.Icons.PHONE_OUTLINED, "phone"),
         ]),
         bgcolor=CARD_BG,
-        border_radius=20,
-        padding=20,
+        border_radius=24,
+        padding=24,
         margin=ft.margin.symmetric(horizontal=16),
         border=ft.border.all(1, BORDER_COLOR),
+        shadow=ft.BoxShadow(
+            spread_radius=0,
+            blur_radius=20,
+            color="#00000040",
+            offset=ft.Offset(0, 8),
+        ),
     )
     
-    # Continue button
+    # Continue button - gradient style
     continue_btn = ft.Container(
-        content=ft.ElevatedButton(
+        content=ft.Container(
             content=ft.Row([
-                ft.Text("Continue", size=16, weight=ft.FontWeight.W_600),
-                ft.Icon(ft.Icons.ARROW_FORWARD_ROUNDED, size=20),
+                ft.Text("Continue", size=16, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                ft.Icon(ft.Icons.ARROW_FORWARD_ROUNDED, size=20, color=TEXT_PRIMARY),
             ], alignment=ft.MainAxisAlignment.CENTER, spacing=8),
-            style=ft.ButtonStyle(
-                bgcolor={ft.ControlState.DEFAULT: TEAL_ACCENT},
-                color={ft.ControlState.DEFAULT: TEXT_PRIMARY},
-                padding=ft.padding.symmetric(vertical=16),
-                shape=ft.RoundedRectangleBorder(radius=14),
+            gradient=ft.LinearGradient(
+                begin=ft.alignment.center_left,
+                end=ft.alignment.center_right,
+                colors=[TEAL_ACCENT, "#0891b2"],
             ),
+            border_radius=16,
+            padding=ft.padding.symmetric(vertical=18),
+            alignment=ft.alignment.center,
             on_click=handle_continue,
-            width=float("inf"),
+            ink=True,
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=15,
+                color="#14B8A640",
+                offset=ft.Offset(0, 4),
+            ),
         ),
         padding=ft.padding.symmetric(horizontal=16, vertical=16),
     )
@@ -1166,6 +1449,10 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
                 expand=True,
             ),
         ], spacing=0, expand=True),
-        bgcolor=BG_COLOR,
+        gradient=ft.LinearGradient(
+            begin=ft.alignment.top_center,
+            end=ft.alignment.bottom_center,
+            colors=[BG_GRADIENT_START, BG_COLOR, BG_GRADIENT_END],
+        ),
         expand=True,
     )

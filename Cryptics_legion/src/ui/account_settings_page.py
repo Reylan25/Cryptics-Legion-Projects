@@ -2,6 +2,7 @@
 import flet as ft
 from core import db
 from core.theme import get_theme
+from utils.currency import CURRENCY_CONFIGS, get_currency_symbol
 
 
 def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
@@ -65,15 +66,10 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
             keyboard_type=ft.KeyboardType.PHONE,
         )
         
-        # Currency dropdown
+        # Currency dropdown with symbols
         currency_options = [
-            "PHP - Philippine Peso",
-            "USD - US Dollar", 
-            "EUR - Euro",
-            "GBP - British Pound",
-            "JPY - Japanese Yen",
-            "KRW - Korean Won",
-            "SGD - Singapore Dollar"
+            f"{code} ({config['symbol']}) - {config['name']}"
+            for code, config in CURRENCY_CONFIGS.items()
         ]
         current_currency = user_profile.get("currency", "PHP")
         # Match to full option if only code is stored
@@ -174,12 +170,15 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
         
         def save_changes(e):
             """Save changes to the database."""
+            # Extract currency code from format "PHP (₱) - Philippine Peso"
+            currency_code = currency_dropdown.value.split(" ")[0] if currency_dropdown.value else "PHP"
+            
             # Collect form data including photo
             form_data = {
                 "full_name": full_name_field.value or "",
                 "email": email_field.value or "",
                 "phone": phone_field.value or "",
-                "currency": currency_dropdown.value.split(" - ")[0] if currency_dropdown.value else "PHP",
+                "currency": currency_code,
                 "timezone": timezone_dropdown.value.split(" (")[0] if timezone_dropdown.value else "Asia/Manila",
                 "first_day": first_day_dropdown.value or "Monday",
                 "photo": photo_state.copy(),
@@ -287,12 +286,14 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
             """Update the photo display and save to database."""
             new_display = create_photo_display()
             avatar_stack.controls[0] = new_display
+            # Extract currency code from format "PHP (₱) - Philippine Peso"
+            currency_code = currency_dropdown.value.split(" ")[0] if currency_dropdown.value else "PHP"
             # Save photo to database
             form_data = {
                 "full_name": full_name_field.value or user_profile.get("full_name", ""),
                 "email": email_field.value or user_profile.get("email", ""),
                 "phone": phone_field.value or user_profile.get("phone", ""),
-                "currency": (currency_dropdown.value.split(" - ")[0] if currency_dropdown.value else "PHP"),
+                "currency": currency_code,
                 "timezone": (timezone_dropdown.value.split(" (")[0] if timezone_dropdown.value else "Asia/Manila"),
                 "first_day": first_day_dropdown.value or "Monday",
                 "photo": photo_state.copy(),

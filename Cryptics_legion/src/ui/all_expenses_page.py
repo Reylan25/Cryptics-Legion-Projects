@@ -4,6 +4,7 @@ from datetime import datetime
 from core import db
 from core.theme import get_theme
 from utils.brand_recognition import identify_brand, get_icon_for_category
+from utils.currency import format_currency, get_currency_from_user_profile
 
 
 def get_category_icon(category: str):
@@ -33,6 +34,9 @@ def format_date(date_str: str) -> str:
 
 def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
     """Create the all expenses page with edit/delete functionality."""
+    user_id = state["user_id"]
+    user_profile = db.get_user_profile(user_id)
+    user_currency = get_currency_from_user_profile(user_profile)
     
     expenses_list = ft.Column(spacing=8)
     
@@ -146,7 +150,7 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
                         expand=True,
                     ),
                     # Amount
-                    ft.Text(f"-₱{amount:,.2f}", size=14, weight=ft.FontWeight.W_600, color="#EF4444"),
+                    ft.Text(f"-{format_currency(amount, user_currency)}", size=14, weight=ft.FontWeight.W_600, color="#EF4444"),
                     # Actions
                     ft.PopupMenuButton(
                         icon=ft.Icons.MORE_VERT,
@@ -251,7 +255,7 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
                     ft.Column(
                         controls=[
                             ft.Text("Total Spent", size=14, color="#9CA3AF"),
-                            ft.Text(f"₱{total:,.2f}", size=24, weight=ft.FontWeight.BOLD, color="#EF4444"),
+                            ft.Text(format_currency(total, user_currency), size=24, weight=ft.FontWeight.BOLD, color="#EF4444"),
                         ],
                         spacing=4,
                     ),
