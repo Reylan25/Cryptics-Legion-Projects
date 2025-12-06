@@ -690,15 +690,18 @@ def get_brand_info(text: str):
     return None
 
 
-def create_expense_item(brand_text: str, date: str, amount: float, on_click=None, theme=None, account_name: str = None):
+def create_expense_item(brand_text: str, date: str, amount: float, on_click=None, theme=None, account_name: str = None, user_currency: str = "PHP"):
     """Creates a modern expense item row with real brand logos and theme support."""
     # Get theme if not provided
     if theme is None:
         theme = get_theme()
     
+    # Import currency utilities
+    from utils.currency import format_currency
+    
     # Format amount and determine colors
     is_expense = amount < 0
-    amount_str = f"-₱{abs(amount):,.2f}" if is_expense else f"+₱{amount:,.2f}"
+    amount_str = format_currency(amount, user_currency)
     
     # Theme-aware amount colors
     if is_expense:
@@ -846,6 +849,11 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
     if "selected_account_id" not in state:
         state["selected_account_id"] = None  # None means use primary account
     
+    # Get user's currency preference
+    from utils.currency import get_currency_from_user_profile
+    user_profile = db.get_user_profile(state["user_id"])
+    user_currency = get_currency_from_user_profile(user_profile)
+    
     def format_date(date_str: str) -> str:
         """Format date string to display format (e.g., Sept 09, 2022)."""
         try:
@@ -883,6 +891,7 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                     amount=-amt,  # Expenses are negative
                     theme=theme,
                     account_name=acc_name,
+                    user_currency=user_currency,
                 )
             )
         
@@ -1963,7 +1972,6 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
             
             # Get icon and currency symbol
             acc_icon = account_type_icons.get(acc_type, ft.Icons.WALLET)
-            curr_symbol = currency_symbols.get(acc_currency, "₱")
             
             # Check if this account is selected
             is_selected = (acc_id == selected_id)
@@ -2033,7 +2041,7 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                         ),
                         # Balance amount
                         ft.Text(
-                            f"{curr_symbol}{acc_balance:,.2f}",
+                            f"{user_currency} {acc_balance:,.2f}",
                             size=18,
                             weight=ft.FontWeight.BOLD,
                             color=text_color if acc_balance >= 0 else theme.error,
@@ -2162,9 +2170,11 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     """
     theme = get_theme()
     
-    # Get user profile
+    # Get user profile and currency
     user_profile = db.get_user_profile(state["user_id"])
     first_name = user_profile.get("firstName", "User") if user_profile else "User"
+    from utils.currency import get_currency_from_user_profile
+    user_currency = get_currency_from_user_profile(user_profile)
     
     # Create avatar
     user_avatar = create_user_avatar(state["user_id"], radius=22, theme=theme)
@@ -2199,7 +2209,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     balance_header = ft.Row([
         ft.Column([
             ft.Text("Total Balance", size=12, color=theme.text_secondary),
-            ft.Text(f"₱{total_balance:,.2f}", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+            ft.Text(f"{user_currency} {total_balance:,.2f}", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
         ], spacing=2),
         ft.Icon(ft.Icons.VISIBILITY, color=theme.text_muted, size=20),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
@@ -2220,7 +2230,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                     ),
                     ft.Column([
                         ft.Text(acc_name, size=14, color=theme.text_primary, weight=ft.FontWeight.W_500),
-                        ft.Text(f"₱{balance:,.2f}", size=12, color=theme.text_secondary),
+                        ft.Text(f"{user_currency} {balance:,.2f}", size=12, color=theme.text_secondary),
                     ], spacing=2, expand=True),
                     ft.Radio(value=str(acc_id), fill_color=theme.accent_primary) if is_selected else ft.Container(),
                 ]),
@@ -2275,6 +2285,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 amount=-amt,
                 theme=theme,
                 account_name=acc_name,
+                user_currency=user_currency,
             )
         )
     
@@ -2339,9 +2350,11 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     # We need to build the content directly
     theme = get_theme()
     
-    # Get user profile for avatar
+    # Get user profile for avatar and currency
     user_profile = db.get_user_profile(state["user_id"])
     first_name = user_profile.get("firstName", "User") if user_profile else "User"
+    from utils.currency import get_currency_from_user_profile
+    user_currency = get_currency_from_user_profile(user_profile)
     
     # Create avatar
     user_avatar = create_user_avatar(state["user_id"], radius=22, theme=theme)
@@ -2392,7 +2405,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 controls=[
                     ft.Text("Total Balance", size=12, color=theme.text_secondary),
                     ft.Text(
-                        f"₱{total_balance:,.2f}",
+                        f"{user_currency} {total_balance:,.2f}",
                         size=28,
                         weight=ft.FontWeight.BOLD,
                         color=theme.text_primary,
@@ -2453,7 +2466,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                     ft.Column(
                         controls=[
                             ft.Text(
-                                f"₱{acc_balance:,.2f}",
+                                f"{user_currency} {acc_balance:,.2f}",
                                 size=14,
                                 weight=ft.FontWeight.W_600,
                                 color=theme.text_primary,
@@ -2695,7 +2708,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                             ft.Container(content=ft.Text("Primary", size=10, color=theme.accent_primary),
                                 bgcolor=f"{theme.accent_primary}20", padding=ft.padding.symmetric(horizontal=8, vertical=2),
                                 border_radius=4, visible=is_primary == 1)], spacing=8),
-                        ft.Text(f"₱{acc_balance:,.2f}", size=12, color=theme.text_secondary),
+                        ft.Text(f"{user_currency} {acc_balance:,.2f}", size=12, color=theme.text_secondary),
                     ], spacing=2, expand=True),
                     ft.Icon(ft.Icons.EDIT_OUTLINED, color=theme.text_muted, size=20),
                 ]),
@@ -2830,6 +2843,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 amount=-amt,
                 theme=theme,
                 account_name=acc_name,
+                user_currency=user_currency,
             )
         )
     

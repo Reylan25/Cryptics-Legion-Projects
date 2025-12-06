@@ -89,6 +89,20 @@ CURRENCY_CONFIGS = {
 
 DEFAULT_CURRENCY = "PHP"
 
+# List of currencies for dropdown selection
+CURRENCY_LIST = [
+    {"code": "PHP", "name": "Philippine Peso", "symbol": "₱"},
+    {"code": "USD", "name": "US Dollar", "symbol": "$"},
+    {"code": "EUR", "name": "Euro", "symbol": "€"},
+    {"code": "GBP", "name": "British Pound", "symbol": "£"},
+    {"code": "JPY", "name": "Japanese Yen", "symbol": "¥"},
+    {"code": "KRW", "name": "Korean Won", "symbol": "₩"},
+    {"code": "SGD", "name": "Singapore Dollar", "symbol": "S$"},
+    {"code": "AUD", "name": "Australian Dollar", "symbol": "A$"},
+    {"code": "CAD", "name": "Canadian Dollar", "symbol": "C$"},
+    {"code": "INR", "name": "Indian Rupee", "symbol": "₹"},
+]
+
 
 def get_currency_config(currency_code: str = None) -> dict:
     """

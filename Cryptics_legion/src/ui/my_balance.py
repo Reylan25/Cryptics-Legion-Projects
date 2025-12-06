@@ -22,15 +22,21 @@ def create_my_balance_view(page: ft.Page, state: dict, toast, on_complete, on_ba
         """Render the balance setup view."""
         page.clean()
         
-        # Balance state
-        balance_state = {"value": "0", "currency": "PHP"}
+        # Get user's currency preference from database
+        user_profile = db.get_user_profile(state["user_id"])
+        user_currency = "PHP"  # Default
+        if user_profile:
+            user_currency = user_profile.get("currency", "PHP")
         
-        # Get user's currency preference from personal details
+        # Also check state for currency
         if state.get("personal_details"):
-            currency = state["personal_details"].get("currency", "PHP")
+            currency = state["personal_details"].get("currency", user_currency)
             if " - " in currency:
                 currency = currency.split(" - ")[0]
-            balance_state["currency"] = currency
+            user_currency = currency
+        
+        # Balance state
+        balance_state = {"value": "0", "currency": user_currency}
         
         # Display text for amount
         amount_display = ft.Text(
@@ -359,13 +365,20 @@ def build_my_balance_content(page: ft.Page, state: dict, toast, on_complete, on_
     TEXT_MUTED = "#6B7280"
     TEAL_ACCENT = "#14B8A6"
     
-    balance_state = {"value": "0", "currency": "PHP"}
+    # Get user's currency preference from database
+    user_profile = db.get_user_profile(state["user_id"])
+    user_currency = "PHP"  # Default
+    if user_profile:
+        user_currency = user_profile.get("currency", "PHP")
     
+    # Also check state for currency
     if state.get("personal_details"):
-        currency = state["personal_details"].get("currency", "PHP")
+        currency = state["personal_details"].get("currency", user_currency)
         if " - " in currency:
             currency = currency.split(" - ")[0]
-        balance_state["currency"] = currency
+        user_currency = currency
+    
+    balance_state = {"value": "0", "currency": user_currency}
     
     amount_display = ft.Text(
         f"0 {balance_state['currency']}",

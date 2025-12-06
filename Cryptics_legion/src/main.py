@@ -14,6 +14,7 @@ from ui.register_page import build_register_content
 from ui.onboarding_page import build_onboarding_content
 from ui.forgot_password_page import create_forgot_password_view
 from ui.personal_details import build_personal_details_content
+from ui.currency_selection_page import build_currency_selection_content
 from ui.my_balance import build_my_balance_content
 from ui.home_page import build_home_content
 from ui.Expenses import build_expenses_content
@@ -118,7 +119,12 @@ def main(page: ft.Page):
     
     def show_personal_details():
         navigate_to("personal_details", lambda: build_personal_details_content(
-            page, state, toast, show_my_balance, show_register
+            page, state, toast, show_currency_selection, show_register
+        ))
+    
+    def show_currency_selection():
+        navigate_to("currency_selection", lambda: build_currency_selection_content(
+            page, state, toast, show_my_balance
         ))
     
     def show_my_balance():
