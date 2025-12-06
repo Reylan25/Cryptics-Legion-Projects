@@ -6,72 +6,132 @@ from ui.nav_bar_buttom import create_page_with_nav
 from datetime import datetime, timedelta
 
 
-# Brand database for recognition - with real brand logos (synced with Expenses.py and home_page.py)
+def get_clearbit_logo(domain: str) -> str:
+    """Get brand logo URL from Clearbit API."""
+    return f"https://logo.clearbit.com/{domain}"
+
+
+def create_user_avatar(user_id: int, radius: int = 22, theme=None):
+    """Create a user avatar based on their profile settings."""
+    if theme is None:
+        theme = get_theme()
+    
+    user_profile = db.get_user_profile(user_id)
+    photo = user_profile.get("photo") if user_profile else None
+    
+    if photo and isinstance(photo, dict):
+        photo_type = photo.get("type", "default")
+        photo_value = photo.get("value")
+        photo_bg = photo.get("bg")
+        
+        if photo_type == "avatar" and photo_value:
+            # Emoji avatar
+            return ft.Container(
+                content=ft.Text(photo_value, size=radius * 0.8),
+                width=radius * 2,
+                height=radius * 2,
+                bgcolor=photo_bg or theme.accent_primary,
+                border_radius=radius,
+                alignment=ft.alignment.center,
+            )
+        elif photo_type == "file" and photo_value:
+            # Custom uploaded image
+            return ft.Container(
+                content=ft.Image(
+                    src_base64=photo_value,
+                    width=radius * 2 - 4,
+                    height=radius * 2 - 4,
+                    fit=ft.ImageFit.COVER,
+                    border_radius=radius - 2,
+                ),
+                width=radius * 2,
+                height=radius * 2,
+                bgcolor="transparent",
+                border_radius=radius,
+                alignment=ft.alignment.center,
+            )
+    
+    # Default avatar with user icon
+    return ft.CircleAvatar(
+        bgcolor=theme.accent_primary,
+        content=ft.Icon(ft.Icons.PERSON, color="white", size=radius * 0.8),
+        radius=radius,
+    )
+
+
+# Brand database for recognition - using Clearbit Logo API for clear, high-quality logos
 BRAND_DATABASE = {
     # Shopping & E-commerce
-    "amazon": {"icon": "a", "color": "#FF9900", "bg": "#232F3E", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg"},
-    "shopee": {"icon": "🛒", "color": "#EE4D2D", "bg": "#EE4D2D", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/0/0e/Shopee_logo.svg"},
-    "lazada": {"icon": "L", "color": "#0F146D", "bg": "#0F146D", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/5/55/Lazada_%282019%29.svg"},
-    "zalora": {"icon": "Z", "color": "#000000", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/7/77/Zalora_Logo.svg"},
-    "ebay": {"icon": "e", "color": "#E53238", "bg": "#FFFFFF", "text": "#E53238", "logo": "https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg"},
+    "amazon": {"icon": "a", "color": "#FF9900", "bg": "#232F3E", "text": "white", "logo": get_clearbit_logo("amazon.com")},
+    "shopee": {"icon": "🛒", "color": "#EE4D2D", "bg": "#EE4D2D", "text": "white", "logo": get_clearbit_logo("shopee.com")},
+    "lazada": {"icon": "L", "color": "#0F146D", "bg": "#0F146D", "text": "white", "logo": get_clearbit_logo("lazada.com")},
+    "zalora": {"icon": "Z", "color": "#000000", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("zalora.com")},
+    "ebay": {"icon": "e", "color": "#E53238", "bg": "#FFFFFF", "text": "#E53238", "logo": get_clearbit_logo("ebay.com")},
     
     # Food & Restaurants
-    "mcdonalds": {"icon": "M", "color": "#FFC72C", "bg": "#DA291C", "text": "#FFC72C", "logo": "https://upload.wikimedia.org/wikipedia/commons/3/36/McDonald%27s_Golden_Arches.svg"},
-    "mcdonald's": {"icon": "M", "color": "#FFC72C", "bg": "#DA291C", "text": "#FFC72C", "logo": "https://upload.wikimedia.org/wikipedia/commons/3/36/McDonald%27s_Golden_Arches.svg"},
-    "starbucks": {"icon": "☕", "color": "#00704A", "bg": "#00704A", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/d/d3/Starbucks_Corporation_Logo_2011.svg"},
-    "jollibee": {"icon": "🐝", "color": "#E31837", "bg": "#E31837", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/8/84/Jollibee_2011_logo.svg"},
-    "kfc": {"icon": "🍗", "color": "#F40027", "bg": "#F40027", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/b/bf/KFC_logo.svg"},
-    "burger king": {"icon": "🍔", "color": "#FF8732", "bg": "#502314", "text": "#FF8732", "logo": "https://upload.wikimedia.org/wikipedia/commons/8/85/Burger_King_logo_%281999%29.svg"},
-    "pizza hut": {"icon": "🍕", "color": "#E31837", "bg": "#E31837", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/sco/d/d2/Pizza_Hut_logo.svg"},
-    "subway": {"icon": "🥪", "color": "#008C15", "bg": "#FFC600", "text": "#008C15", "logo": "https://upload.wikimedia.org/wikipedia/commons/5/5c/Subway_2016_logo.svg"},
-    "dunkin": {"icon": "🍩", "color": "#FF671F", "bg": "#FF671F", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/b/b8/Dunkin%27_Donuts_logo.svg"},
-    "chowking": {"icon": "🥡", "color": "#E31837", "bg": "#E31837", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/b/b2/Chowking_Logo_2019.png"},
-    "greenwich": {"icon": "🍕", "color": "#006B3F", "bg": "#006B3F", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/7/7a/Greenwich_Pizza_logo.png"},
+    "mcdonalds": {"icon": "M", "color": "#FFC72C", "bg": "#DA291C", "text": "#FFC72C", "logo": get_clearbit_logo("mcdonalds.com")},
+    "mcdonald's": {"icon": "M", "color": "#FFC72C", "bg": "#DA291C", "text": "#FFC72C", "logo": get_clearbit_logo("mcdonalds.com")},
+    "starbucks": {"icon": "☕", "color": "#00704A", "bg": "#00704A", "text": "white", "logo": get_clearbit_logo("starbucks.com")},
+    "jollibee": {"icon": "🐝", "color": "#E31837", "bg": "#E31837", "text": "white", "logo": get_clearbit_logo("jollibee.com.ph")},
+    "kfc": {"icon": "🍗", "color": "#F40027", "bg": "#F40027", "text": "white", "logo": get_clearbit_logo("kfc.com")},
+    "burger king": {"icon": "🍔", "color": "#FF8732", "bg": "#502314", "text": "#FF8732", "logo": get_clearbit_logo("bk.com")},
+    "pizza hut": {"icon": "🍕", "color": "#E31837", "bg": "#E31837", "text": "white", "logo": get_clearbit_logo("pizzahut.com")},
+    "subway": {"icon": "🥪", "color": "#008C15", "bg": "#FFC600", "text": "#008C15", "logo": get_clearbit_logo("subway.com")},
+    "dunkin": {"icon": "🍩", "color": "#FF671F", "bg": "#FF671F", "text": "white", "logo": get_clearbit_logo("dunkindonuts.com")},
+    "chowking": {"icon": "🥡", "color": "#E31837", "bg": "#E31837", "text": "white", "logo": get_clearbit_logo("chowkingdelivery.com")},
+    "greenwich": {"icon": "🍕", "color": "#006B3F", "bg": "#006B3F", "text": "white", "logo": get_clearbit_logo("greenwichdelivery.com")},
+    "mang inasal": {"icon": "🍗", "color": "#FDB813", "bg": "#FDB813", "text": "#1E1E1E", "logo": get_clearbit_logo("manginasal.com")},
     
     # Tech & Electronics
-    "apple": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"},
-    "ipad": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"},
-    "iphone": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"},
-    "macbook": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"},
-    "samsung": {"icon": "S", "color": "#1428A0", "bg": "#1428A0", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/2/24/Samsung_Logo.svg"},
-    "google": {"icon": "G", "color": "#4285F4", "bg": "#FFFFFF", "text": "#4285F4", "logo": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg"},
-    "microsoft": {"icon": "⊞", "color": "#00A4EF", "bg": "#737373", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg"},
-    "sony": {"icon": "S", "color": "#000000", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/c/ca/Sony_logo.svg"},
+    "apple": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("apple.com")},
+    "ipad": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("apple.com")},
+    "iphone": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("apple.com")},
+    "macbook": {"icon": "", "color": "#555555", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("apple.com")},
+    "samsung": {"icon": "S", "color": "#1428A0", "bg": "#1428A0", "text": "white", "logo": get_clearbit_logo("samsung.com")},
+    "google": {"icon": "G", "color": "#4285F4", "bg": "#FFFFFF", "text": "#4285F4", "logo": get_clearbit_logo("google.com")},
+    "microsoft": {"icon": "⊞", "color": "#00A4EF", "bg": "#737373", "text": "white", "logo": get_clearbit_logo("microsoft.com")},
+    "sony": {"icon": "S", "color": "#000000", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("sony.com")},
+    "xiaomi": {"icon": "Mi", "color": "#FF6900", "bg": "#FF6900", "text": "white", "logo": get_clearbit_logo("mi.com")},
+    "huawei": {"icon": "H", "color": "#FF0000", "bg": "#FF0000", "text": "white", "logo": get_clearbit_logo("huawei.com")},
     
     # Finance & Payment
-    "gcash": {"icon": "G", "color": "#007DFE", "bg": "#007DFE", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/e/ed/GCash_logo.svg"},
-    "maya": {"icon": "M", "color": "#00D66C", "bg": "#00D66C", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/2/2e/Maya_%28digital_wallet%29_logo.svg"},
-    "bpi": {"icon": "B", "color": "#9E1B34", "bg": "#9E1B34", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/5/57/BPI_logo.svg"},
-    "bdo": {"icon": "B", "color": "#003478", "bg": "#003478", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/0/07/BDO_Unibank.svg"},
+    "gcash": {"icon": "G", "color": "#007DFE", "bg": "#007DFE", "text": "white", "logo": get_clearbit_logo("gcash.com")},
+    "maya": {"icon": "M", "color": "#00D66C", "bg": "#00D66C", "text": "white", "logo": get_clearbit_logo("maya.ph")},
+    "bpi": {"icon": "B", "color": "#9E1B34", "bg": "#9E1B34", "text": "white", "logo": get_clearbit_logo("bpi.com.ph")},
+    "bdo": {"icon": "B", "color": "#003478", "bg": "#003478", "text": "white", "logo": get_clearbit_logo("bdo.com.ph")},
+    "paypal": {"icon": "P", "color": "#003087", "bg": "#003087", "text": "white", "logo": get_clearbit_logo("paypal.com")},
     
     # Streaming & Entertainment
-    "netflix": {"icon": "N", "color": "#E50914", "bg": "#000000", "text": "#E50914", "logo": "https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg"},
-    "spotify": {"icon": "♪", "color": "#1DB954", "bg": "#191414", "text": "#1DB954", "logo": "https://upload.wikimedia.org/wikipedia/commons/2/26/Spotify_logo_with_text.svg"},
-    "youtube": {"icon": "▶", "color": "#FF0000", "bg": "#282828", "text": "#FF0000", "logo": "https://upload.wikimedia.org/wikipedia/commons/e/e1/Logo_of_YouTube_%282015-2017%29.svg"},
-    "disney": {"icon": "D", "color": "#113CCF", "bg": "#040814", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/3/3e/Disney%2B_logo.svg"},
+    "netflix": {"icon": "N", "color": "#E50914", "bg": "#000000", "text": "#E50914", "logo": get_clearbit_logo("netflix.com")},
+    "spotify": {"icon": "♪", "color": "#1DB954", "bg": "#191414", "text": "#1DB954", "logo": get_clearbit_logo("spotify.com")},
+    "youtube": {"icon": "▶", "color": "#FF0000", "bg": "#282828", "text": "#FF0000", "logo": get_clearbit_logo("youtube.com")},
+    "disney": {"icon": "D", "color": "#113CCF", "bg": "#040814", "text": "white", "logo": get_clearbit_logo("disneyplus.com")},
     
     # Transport
-    "grab": {"icon": "G", "color": "#00B14F", "bg": "#00B14F", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/1/12/Grab_Logo.svg"},
-    "uber": {"icon": "U", "color": "#000000", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/c/cc/Uber_logo_2018.png"},
-    "angkas": {"icon": "A", "color": "#F16521", "bg": "#F16521", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/9/96/Angkas_app_icon.png"},
-    "shell": {"icon": "🐚", "color": "#FBCE07", "bg": "#DD1D21", "text": "#FBCE07", "logo": "https://upload.wikimedia.org/wikipedia/en/e/e8/Shell_logo.svg"},
-    "petron": {"icon": "P", "color": "#1E4D8C", "bg": "#1E4D8C", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/2/2c/Petron_Corporation_Logo.svg"},
-    "caltex": {"icon": "★", "color": "#E31937", "bg": "#E31937", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/1/16/Caltex_logo.svg"},
+    "grab": {"icon": "G", "color": "#00B14F", "bg": "#00B14F", "text": "white", "logo": get_clearbit_logo("grab.com")},
+    "uber": {"icon": "U", "color": "#000000", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("uber.com")},
+    "angkas": {"icon": "A", "color": "#F16521", "bg": "#F16521", "text": "white", "logo": get_clearbit_logo("angkas.com")},
+    "shell": {"icon": "🐚", "color": "#FBCE07", "bg": "#DD1D21", "text": "#FBCE07", "logo": get_clearbit_logo("shell.com")},
+    "petron": {"icon": "P", "color": "#1E4D8C", "bg": "#1E4D8C", "text": "white", "logo": get_clearbit_logo("petron.com")},
+    "caltex": {"icon": "★", "color": "#E31937", "bg": "#E31937", "text": "white", "logo": get_clearbit_logo("caltex.com")},
+    "foodpanda": {"icon": "🐼", "color": "#D70F64", "bg": "#D70F64", "text": "white", "logo": get_clearbit_logo("foodpanda.com")},
     
     # Utilities
-    "meralco": {"icon": "⚡", "color": "#FF6B00", "bg": "#FF6B00", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/8/82/Meralco_logo.svg"},
-    "pldt": {"icon": "P", "color": "#E31937", "bg": "#E31937", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/e/ec/PLDT_Logo.svg"},
-    "globe": {"icon": "G", "color": "#0056A3", "bg": "#0056A3", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/3/35/Globe_Telecom_Logo.svg"},
-    "smart": {"icon": "S", "color": "#00913A", "bg": "#00913A", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/4/4d/Smart_Communications_logo.svg"},
-    "maynilad": {"icon": "M", "color": "#0072CE", "bg": "#0072CE", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/7/73/Maynilad_Logo.png"},
+    "meralco": {"icon": "⚡", "color": "#FF6B00", "bg": "#FF6B00", "text": "white", "logo": get_clearbit_logo("meralco.com.ph")},
+    "pldt": {"icon": "P", "color": "#E31937", "bg": "#E31937", "text": "white", "logo": get_clearbit_logo("pldthome.com")},
+    "globe": {"icon": "G", "color": "#0056A3", "bg": "#0056A3", "text": "white", "logo": get_clearbit_logo("globe.com.ph")},
+    "smart": {"icon": "S", "color": "#00913A", "bg": "#00913A", "text": "white", "logo": get_clearbit_logo("smart.com.ph")},
+    "maynilad": {"icon": "M", "color": "#0072CE", "bg": "#0072CE", "text": "white", "logo": get_clearbit_logo("mayniladwater.com.ph")},
+    "converge": {"icon": "C", "color": "#FF6600", "bg": "#FF6600", "text": "white", "logo": get_clearbit_logo("convergeict.com")},
     
     # Retail & Supermarkets
-    "sm": {"icon": "SM", "color": "#003DA5", "bg": "#003DA5", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/3/3a/SM_Supermalls_logo.svg"},
-    "robinsons": {"icon": "R", "color": "#00529B", "bg": "#00529B", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/en/c/c5/Robinsons_Supermarket_logo.svg"},
-    "uniqlo": {"icon": "U", "color": "#FF0000", "bg": "#FFFFFF", "text": "#FF0000", "logo": "https://upload.wikimedia.org/wikipedia/commons/9/92/UNIQLO_logo.svg"},
-    "h&m": {"icon": "H&M", "color": "#E50010", "bg": "#FFFFFF", "text": "#E50010", "logo": "https://upload.wikimedia.org/wikipedia/commons/5/53/H%26M-Logo.svg"},
-    "nike": {"icon": "✓", "color": "#111111", "bg": "#111111", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Logo_NIKE.svg"},
-    "adidas": {"icon": "⫿", "color": "#000000", "bg": "#000000", "text": "white", "logo": "https://upload.wikimedia.org/wikipedia/commons/2/20/Adidas_Logo.svg"},
+    "sm": {"icon": "SM", "color": "#003DA5", "bg": "#003DA5", "text": "white", "logo": get_clearbit_logo("smsupermalls.com")},
+    "robinsons": {"icon": "R", "color": "#00529B", "bg": "#00529B", "text": "white", "logo": get_clearbit_logo("robinsonsmalls.com")},
+    "uniqlo": {"icon": "U", "color": "#FF0000", "bg": "#FFFFFF", "text": "#FF0000", "logo": get_clearbit_logo("uniqlo.com")},
+    "h&m": {"icon": "H&M", "color": "#E50010", "bg": "#FFFFFF", "text": "#E50010", "logo": get_clearbit_logo("hm.com")},
+    "nike": {"icon": "✓", "color": "#111111", "bg": "#111111", "text": "white", "logo": get_clearbit_logo("nike.com")},
+    "adidas": {"icon": "⫿", "color": "#000000", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("adidas.com")},
+    "zara": {"icon": "Z", "color": "#000000", "bg": "#000000", "text": "white", "logo": get_clearbit_logo("zara.com")},
 }
 
 # Category fallback icons
@@ -257,7 +317,8 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         """Show transaction detail bottom sheet."""
         if theme is None:
             theme = get_theme()
-        eid, uid, amount, category, description, date_str = expense
+        # Unpack with account_id (position 6)
+        eid, uid, amount, category, description, date_str = expense[:6]
         
         # Generate mock transaction details
         transaction_id = f"TXN{eid:08d}"
@@ -388,12 +449,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
                 controls=[
                     ft.Text("Statistics", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
                     ft.Container(
-                        content=ft.CircleAvatar(
-                            foreground_image_src="/assets/icon.png",
-                            bgcolor=theme.accent_primary,
-                            content=ft.Icon(ft.Icons.PERSON, color="white"),
-                            radius=22,
-                        ),
+                        content=create_user_avatar(state["user_id"], radius=22, theme=theme),
                         on_click=lambda e: nav_profile(),
                         ink=True,
                         border_radius=22,
@@ -460,8 +516,20 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         # Recent transactions list
         transactions_list = ft.Column(spacing=8)
         
+        # Cache account names for efficiency
+        account_cache = {}
+        def get_account_name(acc_id):
+            if acc_id is None:
+                return None
+            if acc_id not in account_cache:
+                acc = db.get_account_by_id(acc_id, state["user_id"])
+                account_cache[acc_id] = acc[1] if acc else None
+            return account_cache[acc_id]
+        
         for exp in expenses[:5]:  # Show last 5
-            eid, uid, amount, category, description, date_str = exp
+            # Unpack with account_id (position 6)
+            eid, uid, amount, category, description, date_str, acc_id = exp[:7]
+            acc_name = get_account_name(acc_id)
             transactions_list.controls.append(
                 _transaction_item(
                     category=category,
@@ -470,6 +538,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
                     date=_format_date(date_str),
                     on_click=lambda e, ex=exp, t=theme: show_transaction_detail(ex, t),
                     theme=theme,
+                    account_name=acc_name,
                 )
             )
         
@@ -522,22 +591,305 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         )
         
         # Use centralized nav bar component
-        page.add(
-            create_page_with_nav(
-                page=page,
-                main_content=main_content,
-                active_index=2,  # Statistics (was Wallet) is active
-                on_home=nav_home,
-                on_expenses=nav_expenses,
-                on_wallet=None,  # Already on statistics
-                on_profile=nav_profile,
-                on_fab_click=nav_add_expense,
-                theme=theme,
-            )
+        full_view = create_page_with_nav(
+            page=page,
+            main_content=main_content,
+            active_index=2,  # Statistics (was Wallet) is active
+            on_home=nav_home,
+            on_expenses=nav_expenses,
+            on_wallet=None,  # Already on statistics
+            on_profile=nav_profile,
+            on_fab_click=nav_add_expense,
+            theme=theme,
         )
+        
+        page.add(full_view)
         page.update()
     
     return show_view
+
+
+# ============ NEW: Content builder for flash-free navigation ============
+def build_statistics_content(page: ft.Page, state: dict, toast, 
+                              go_back, show_expenses, show_profile, show_add_expense):
+    """
+    Builds and returns statistics page content WITHOUT calling page.clean() or page.add().
+    """
+    theme = get_theme()
+    
+    # Get user profile for avatar
+    user_profile = db.get_user_profile(state["user_id"])
+    first_name = user_profile.get("firstName", "User") if user_profile else "User"
+    
+    # Create avatar
+    user_avatar = create_user_avatar(state["user_id"], radius=22, theme=theme)
+    
+    # Header
+    header = ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.Column(
+                    controls=[
+                        ft.Text("Statistics", size=22, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                        ft.Text("Your spending insights", size=13, color=theme.text_secondary),
+                    ],
+                    spacing=0,
+                ),
+                ft.Row(
+                    controls=[
+                        ft.IconButton(
+                            icon=ft.Icons.NOTIFICATIONS_NONE_ROUNDED,
+                            icon_color=theme.text_primary,
+                            icon_size=22,
+                        ),
+                        ft.Container(
+                            content=user_avatar,
+                            on_click=lambda e: show_profile() if show_profile else None,
+                            ink=True,
+                            border_radius=22,
+                        ),
+                    ],
+                    spacing=8,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+        ),
+        padding=ft.padding.only(top=10, bottom=16),
+    )
+    
+    # Get expenses data
+    from utils.statistics import get_expense_summary
+    expense_summary = get_expense_summary()
+    pie_sections = [
+        ft.PieChartSection(
+            value=float(row[1]),
+            title=row[0],
+            color=None
+        ) for row in expense_summary
+    ]
+    # Note: To add interactivity, use PieChart's on_section_click event if available in Flet version
+
+    filtered_category = {"value": None}
+    def filter_by_category(category):
+        filtered_category["value"] = category
+        page.update()
+
+    # Get all expenses
+    all_expenses = db.select_expenses_by_user(state["user_id"])
+    if filtered_category["value"]:
+        expenses = [exp for exp in all_expenses if exp[3] == filtered_category["value"]]
+    else:
+        expenses = all_expenses
+
+    # Pie chart control
+    pie_chart = ft.PieChart(
+        sections=pie_sections,
+        expand=True,
+        center_space_radius=40,
+        sections_space=2,
+    )
+
+    # Summary card
+    total_spent = sum(exp[2] for exp in all_expenses)
+    summary_card = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text("Total Spent", size=12, color=theme.text_secondary),
+                ft.Text(f"₱{total_spent:,.2f}", size=24, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                ft.Text(f"Top Category: {expense_summary[0][0] if expense_summary else 'N/A'}", size=14, color=theme.text_secondary),
+            ],
+            spacing=4,
+        ),
+        padding=ft.padding.symmetric(horizontal=16, vertical=12),
+        border_radius=12,
+        bgcolor=theme.bg_card,
+        border=ft.border.all(1, theme.border_primary),
+    )
+
+    # Transaction list (filtered)
+    transactions_list = ft.Column(spacing=8)
+    for exp in expenses[:5]:
+        eid, uid, amount, category, description, date_str, acc_id = exp[:7]
+        transactions_list.controls.append(
+            _transaction_item(
+                category=category,
+                description=description or category,
+                amount=amount,
+                date=_format_date(date_str),
+                on_click=lambda e, ex=exp, t=theme: show_transaction_detail(ex, t),
+                theme=theme,
+                account_name=None,
+            )
+        )
+    if not expenses:
+        transactions_list.controls.append(
+            ft.Container(
+                content=ft.Column(
+                    controls=[
+                        ft.Icon(ft.Icons.RECEIPT_LONG, color=theme.text_hint, size=48),
+                        ft.Text("No transactions yet", color=theme.text_muted, size=14),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=12,
+                ),
+                padding=40,
+                alignment=ft.alignment.center,
+            )
+        )
+
+    # Main scrollable content
+    scrollable_content = ft.Column(
+        controls=[
+            summary_card,
+            ft.Container(height=16),
+            ft.Text("Spending Breakdown", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
+            pie_chart,
+            ft.Container(height=24),
+            ft.Text("Recent Transactions", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
+            transactions_list,
+            ft.Container(height=100),
+        ],
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+    expenses = db.select_expenses_by_user(state["user_id"])
+    today = datetime.now()
+    start_date = today - timedelta(weeks=1)
+    
+    filtered = []
+    for exp in expenses:
+        try:
+            exp_date = datetime.strptime(exp[5], "%Y-%m-%d")
+            if exp_date >= start_date:
+                filtered.append(exp)
+        except:
+            pass
+    
+    total_spent = sum(exp[2] for exp in filtered)
+    
+    # Category breakdown
+    category_totals = {}
+    for exp in filtered:
+        cat = exp[3]
+        amt = exp[2]
+        category_totals[cat] = category_totals.get(cat, 0) + amt
+    
+    # Spending card
+    period_buttons = ft.Row(
+        controls=[
+            ft.Container(
+                content=ft.Text(p, size=12, color="white" if p == "1W" else theme.text_muted),
+                bgcolor=theme.accent_primary if p == "1W" else "transparent",
+                border_radius=16,
+                padding=ft.padding.symmetric(horizontal=16, vertical=8),
+            )
+            for p in ["1D", "1W", "1M", "3M", "1Y"]
+        ],
+        alignment=ft.MainAxisAlignment.CENTER,
+        spacing=8,
+    )
+    
+    spending_card = ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Text("Total Spent", size=12, color=theme.text_secondary),
+                ft.Text(f"₱{total_spent:,.2f}", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                ft.Container(height=16),
+                period_buttons,
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        padding=20,
+        border_radius=16,
+        bgcolor=theme.bg_card,
+        border=ft.border.all(1, theme.border_primary) if not theme.is_dark else None,
+    )
+    
+    # Transactions header
+    transactions_header = ft.Row(
+        controls=[
+            ft.Text("Recent Transactions", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
+            ft.Text(f"{len(filtered)} items", size=12, color=theme.text_secondary),
+        ],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+    )
+    
+    # Transactions list
+    transactions_list = ft.Column(spacing=8)
+    
+    # Cache account names for efficiency
+    account_cache = {}
+    def get_account_name(acc_id):
+        if acc_id is None:
+            return None
+        if acc_id not in account_cache:
+            acc = db.get_account_by_id(acc_id, state["user_id"])
+            account_cache[acc_id] = acc[1] if acc else None
+        return account_cache[acc_id]
+    
+    for exp in filtered[:10]:
+        eid, uid, amt, cat, dsc, dtt, acc_id = exp[:7]
+        display_name = dsc if dsc else cat
+        acc_name = get_account_name(acc_id)
+        try:
+            dt = datetime.strptime(dtt, "%Y-%m-%d")
+            date_str = dt.strftime("%d %b")
+        except:
+            date_str = dtt
+        
+        transactions_list.controls.append(
+            _transaction_item(cat, display_name, amt, date_str, theme=theme, account_name=acc_name)
+        )
+    
+    if not filtered:
+        transactions_list.controls.append(
+            ft.Container(
+                content=ft.Text("No transactions this period", color="#6B7280", size=14),
+                padding=20,
+                alignment=ft.alignment.center,
+            )
+        )
+    
+    scrollable_content = ft.Column(
+        controls=[
+            spending_card,
+            ft.Container(height=24),
+            transactions_header,
+            ft.Container(height=12),
+            transactions_list,
+            ft.Container(height=100),
+        ],
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+    
+    main_content = ft.Container(
+        expand=True,
+        bgcolor=theme.bg_primary,
+        gradient=ft.LinearGradient(
+            begin=ft.alignment.top_center,
+            end=ft.alignment.bottom_center,
+            colors=[theme.bg_gradient_start, theme.bg_gradient_end],
+        ),
+        padding=ft.padding.only(left=20, right=20, top=10, bottom=0),
+        content=ft.Column(
+            controls=[header, scrollable_content],
+            expand=True,
+            spacing=0,
+        ),
+    )
+    
+    return create_page_with_nav(
+        page=page,
+        main_content=main_content,
+        active_index=2,
+        on_home=go_back,
+        on_expenses=show_expenses,
+        on_wallet=None,
+        on_profile=show_profile,
+        on_fab_click=show_add_expense,
+        theme=theme,
+    )
 
 
 # Helper functions
@@ -637,7 +989,7 @@ def _get_category_color(category: str):
     return "#6366F1"
 
 
-def _transaction_item(category: str, description: str, amount: float, date: str, on_click=None, theme=None):
+def _transaction_item(category: str, description: str, amount: float, date: str, on_click=None, theme=None, account_name: str = None):
     """Create a transaction list item with brand logos."""
     if theme is None:
         from core.theme import get_theme
@@ -713,6 +1065,12 @@ def _transaction_item(category: str, description: str, amount: float, date: str,
         bgcolor=theme.error_bg,
     )
     
+    # Account badge
+    account_badge = ft.Row([
+        ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=10, color=theme.accent_primary),
+        ft.Text(account_name or "Cash", size=10, color=theme.accent_primary, weight=ft.FontWeight.W_500),
+    ], spacing=3, tight=True) if account_name else ft.Container()
+    
     return ft.Container(
         content=ft.Row(
             controls=[
@@ -727,7 +1085,11 @@ def _transaction_item(category: str, description: str, amount: float, date: str,
                     spacing=2,
                     expand=True,
                 ),
-                amount_badge,
+                # Amount and Account badge - fixed position right side
+                ft.Column([
+                    amount_badge,
+                    account_badge,
+                ], spacing=4, horizontal_alignment=ft.CrossAxisAlignment.END),
                 # Arrow
                 ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_hint, size=20),
             ],

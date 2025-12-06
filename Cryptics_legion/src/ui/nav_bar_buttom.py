@@ -5,7 +5,7 @@ from core.theme import get_theme
 
 def create_fab_button(page: ft.Page, on_click: callable = None, theme=None):
     """
-    Creates the square FAB button with hover animation.
+    Creates the hexagon FAB button with hover animation.
     
     Args:
         page: The Flet page instance
@@ -15,24 +15,59 @@ def create_fab_button(page: ft.Page, on_click: callable = None, theme=None):
     if theme is None:
         theme = get_theme()
     
-    fab_icon = ft.Icon(ft.Icons.ADD_ROUNDED, color="white", size=28)
+    size = 56
+    
+    # Create hexagon shape using stacked rotated rectangles with gradient background
+    hex_gradient = ft.LinearGradient(
+        begin=ft.alignment.top_left,
+        end=ft.alignment.bottom_right,
+        colors=["#5D4157", "#A8CABA"],
+    )
+
+    hex_part1 = ft.Container(
+        width=size,
+        height=size * 0.58,
+        border_radius=4,
+        gradient=hex_gradient,
+    )
+
+    hex_part2 = ft.Container(
+        width=size,
+        height=size * 0.58,
+        border_radius=4,
+        rotate=ft.Rotate(angle=1.0472),  # 60 degrees
+        gradient=hex_gradient,
+    )
+
+    hex_part3 = ft.Container(
+        width=size,
+        height=size * 0.58,
+        border_radius=4,
+        rotate=ft.Rotate(angle=-1.0472),  # -60 degrees
+        gradient=hex_gradient,
+    )
+    
+    fab_icon = ft.Icon(ft.Icons.ADD_ROUNDED, color="white", size=32, weight=1200)
+    
+    hexagon_stack = ft.Stack(
+        controls=[
+            ft.Container(content=hex_part1, alignment=ft.alignment.center),
+            ft.Container(content=hex_part2, alignment=ft.alignment.center),
+            ft.Container(content=hex_part3, alignment=ft.alignment.center),
+            ft.Container(content=fab_icon, alignment=ft.alignment.center),
+        ],
+        width=size,
+        height=size,
+    )
+    
     fab_container = ft.Container(
-        content=fab_icon,
-        width=56,
-        height=56,
-        border_radius=12,
-        bgcolor=theme.accent_primary,
+        content=hexagon_stack,
+        width=size + 4,
+        height=size + 4,
         alignment=ft.alignment.center,
-        ink=True,
         animate=200,
         animate_scale=200,
         scale=1,
-        shadow=ft.BoxShadow(
-            spread_radius=0,
-            blur_radius=8,
-            color=f"{theme.accent_primary}40",
-            offset=ft.Offset(0, 4),
-        ),
     )
     
     def handle_click(e):
@@ -42,22 +77,8 @@ def create_fab_button(page: ft.Page, on_click: callable = None, theme=None):
     def on_fab_hover(e):
         if e.data == "true":
             fab_container.scale = 1.1
-            fab_container.bgcolor = theme.accent_secondary
-            fab_container.shadow = ft.BoxShadow(
-                spread_radius=2,
-                blur_radius=15,
-                color=f"{theme.accent_primary}80",
-                offset=ft.Offset(0, 6),
-            )
         else:
             fab_container.scale = 1
-            fab_container.bgcolor = theme.accent_primary
-            fab_container.shadow = ft.BoxShadow(
-                spread_radius=0,
-                blur_radius=8,
-                color=f"{theme.accent_primary}40",
-                offset=ft.Offset(0, 4),
-            )
         page.update()
     
     fab_container.on_click = handle_click
@@ -110,45 +131,54 @@ def create_bottom_nav_bar(
         if on_profile and active_index != 3:
             on_profile()
     
-    return ft.Container(
+    def create_nav_item(icon, label, is_active, on_click):
+        """Create a nav item with icon and label."""
+        return ft.Container(
+            content=ft.Icon(
+                icon,
+                color=active_color if is_active else inactive_color,
+                size=32,
+            ),
+            on_click=on_click,
+            ink=True,
+            border_radius=16,
+            padding=ft.padding.symmetric(horizontal=8, vertical=10),
+            expand=True,
+            alignment=ft.alignment.center,
+        )
+    
+    nav_bar_inner = ft.Container(
         content=ft.Row(
             controls=[
-                ft.IconButton(
-                    icon=ft.Icons.HOME_ROUNDED,
-                    icon_color=active_color if active_index == 0 else inactive_color,
-                    icon_size=28,
-                    on_click=handle_home,
-                    style=ft.ButtonStyle(padding=ft.padding.all(12)),
-                ),
-                ft.IconButton(
-                    icon=ft.Icons.ANALYTICS_ROUNDED,
-                    icon_color=active_color if active_index == 1 else inactive_color,
-                    icon_size=28,
-                    on_click=handle_expenses,
-                    style=ft.ButtonStyle(padding=ft.padding.all(12)),
-                ),
+                create_nav_item(ft.Icons.DASHBOARD_ROUNDED, None, active_index == 0, handle_home),
+                create_nav_item(ft.Icons.PAYMENTS_ROUNDED, None, active_index == 1, handle_expenses),
                 ft.Container(width=60),  # Space for FAB
-                ft.IconButton(
-                    icon=ft.Icons.INSERT_CHART_ROUNDED,  # Statistics icon
-                    icon_color=active_color if active_index == 2 else inactive_color,
-                    icon_size=28,
-                    on_click=handle_wallet,
-                    style=ft.ButtonStyle(padding=ft.padding.all(12)),
-                ),
-                ft.IconButton(
-                    icon=ft.Icons.PERSON_ROUNDED,
-                    icon_color=active_color if active_index == 3 else inactive_color,
-                    icon_size=28,
-                    on_click=handle_profile,
-                    style=ft.ButtonStyle(padding=ft.padding.all(12)),
-                ),
+                create_nav_item(ft.Icons.INSIGHTS_ROUNDED, None, active_index == 2, handle_wallet),
+                create_nav_item(ft.Icons.ACCOUNT_CIRCLE_ROUNDED, None, active_index == 3, handle_profile),
             ],
-            alignment=ft.MainAxisAlignment.SPACE_AROUND,
+            alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+            expand=True,
         ),
-        bgcolor=nav_bg,
-        border_radius=ft.border_radius.only(top_left=24, top_right=24),
-        padding=ft.padding.symmetric(vertical=12, horizontal=8),
-        border=ft.border.only(top=ft.BorderSide(1, theme.border_primary)) if not theme.is_dark else None,
+        gradient=ft.RadialGradient(
+            center=ft.alignment.center,
+            radius=0.8,
+            colors=[theme.bg_gradient_start, theme.bg_primary, theme.bg_gradient_end],
+        ),
+        padding=ft.padding.symmetric(vertical=8, horizontal=4),
+        bgcolor=theme.bg_primary,
+        shadow=ft.BoxShadow(
+            spread_radius=0,
+            blur_radius=20,
+            color="#00000040" if theme.is_dark else "#00000020",
+            offset=ft.Offset(0, -4),
+        ),
+    )
+    
+    # Remove outer padding so nav bar fits the screen width
+    return ft.Container(
+        content=nav_bar_inner,
+        padding=ft.padding.only(bottom=0),
+        bgcolor="transparent",
     )
 
 

@@ -1,11 +1,14 @@
 import flet as ft
 import sqlite3
 import os
+import sys
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "expense_tracker.db")
+# Add the parent directory to the path to import from core
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from core.db import connect_db
 
 def get_expense_summary():
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db()
     cursor = conn.cursor()
 
     cursor.execute("""

@@ -47,6 +47,18 @@ def connect_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+    # Migration: Add selected_account_id column to users table
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN selected_account_id INTEGER")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    # Migration: Add last_login column to users table
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # expenses table (linked to users)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS expenses (
@@ -90,6 +102,12 @@ def connect_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Migration: Add account_id column to expenses table
+    try:
+        cursor.execute("ALTER TABLE expenses ADD COLUMN account_id INTEGER")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
     return conn
 
@@ -115,6 +133,59 @@ def get_user_by_username(username: str):
     row = cur.fetchone()
     conn.close()
     return row  # (id, password_blob) or None
+
+
+def update_last_login(user_id: int):
+    """Update the last login timestamp for a user."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET last_login = ? WHERE id = ?", 
+                (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_recent_usernames(limit: int = 3):
+    """Get the most recently logged in usernames."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT username FROM users 
+        WHERE last_login IS NOT NULL 
+        ORDER BY last_login DESC 
+        LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+
+def update_username(user_id: int, new_username: str) -> tuple:
+    """Update the username for a user. Returns (success, error_message)."""
+    if not new_username or len(new_username.strip()) < 3:
+        return (False, "Username must be at least 3 characters")
+    
+    new_username = new_username.strip()
+    
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    # Check if username already exists (for another user)
+    cur.execute("SELECT id FROM users WHERE username = ? AND id != ?", (new_username, user_id))
+    existing = cur.fetchone()
+    if existing:
+        conn.close()
+        return (False, "Username already taken")
+    
+    try:
+        cur.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, user_id))
+        conn.commit()
+        conn.close()
+        return (True, None)
+    except Exception as e:
+        conn.close()
+        return (False, str(e))
 
 
 def get_user_profile(user_id: int) -> dict:
@@ -213,35 +284,80 @@ def mark_onboarding_seen(user_id: int) -> bool:
 
 
 # ----- EXPENSE CRUD (low-level) -----
-def insert_expense(user_id: int, amount: float, category: str, description: str, date_str: str):
+def insert_expense(user_id: int, amount: float, category: str, description: str, date_str: str, account_id: int = None):
+    """Insert an expense and deduct the amount from the linked account balance."""
     conn = connect_db()
     cur = conn.cursor()
+    
+    # Insert the expense with account_id
     cur.execute(
-        "INSERT INTO expenses (user_id, amount, category, description, date) VALUES (?, ?, ?, ?, ?)",
-        (user_id, amount, category, description, date_str),
+        "INSERT INTO expenses (user_id, amount, category, description, date, account_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, amount, category, description, date_str, account_id),
     )
+    expense_id = cur.lastrowid
+    
+    # Deduct amount from account balance if account_id is provided
+    if account_id:
+        cur.execute(
+            "UPDATE accounts SET balance = balance - ? WHERE id = ? AND user_id = ?",
+            (amount, account_id, user_id),
+        )
+    
     conn.commit()
     conn.close()
+    return expense_id
 
 
-def select_expenses_by_user(user_id: int):
+def select_expenses_by_user(user_id: int, account_id: int = None):
+    """Get expenses for a user, optionally filtered by account."""
     conn = connect_db()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT id, user_id, amount, category, description, date FROM expenses WHERE user_id = ? ORDER BY date DESC",
-        (user_id,),
-    )
+    
+    if account_id:
+        cur.execute(
+            "SELECT id, user_id, amount, category, description, date, account_id FROM expenses WHERE user_id = ? AND account_id = ? ORDER BY date DESC",
+            (user_id, account_id),
+        )
+    else:
+        cur.execute(
+            "SELECT id, user_id, amount, category, description, date, account_id FROM expenses WHERE user_id = ? ORDER BY date DESC",
+            (user_id,),
+        )
     rows = cur.fetchall()
     conn.close()
     return rows
 
 
-def update_expense_row(expense_id: int, user_id: int, amount: float, category: str, description: str, date_str: str) -> bool:
+def update_expense_row(expense_id: int, user_id: int, amount: float, category: str, description: str, date_str: str, account_id: int = None) -> bool:
+    """Update an expense and adjust account balances accordingly."""
     conn = connect_db()
     cur = conn.cursor()
+    
+    # Get the old expense data to calculate balance difference
+    cur.execute("SELECT amount, account_id FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+    old_expense = cur.fetchone()
+    
+    if old_expense:
+        old_amount, old_account_id = old_expense
+        
+        # Restore balance to old account (add back the old amount)
+        if old_account_id:
+            cur.execute(
+                "UPDATE accounts SET balance = balance + ? WHERE id = ? AND user_id = ?",
+                (old_amount, old_account_id, user_id),
+            )
+        
+        # Deduct from new account (or same account with new amount)
+        if account_id:
+            cur.execute(
+                "UPDATE accounts SET balance = balance - ? WHERE id = ? AND user_id = ?",
+                (amount, account_id, user_id),
+            )
+    
+    # Update the expense
     cur.execute(
-        "UPDATE expenses SET amount=?, category=?, description=?, date=? WHERE id=? AND user_id=?",
-        (amount, category, description, date_str, expense_id, user_id),
+        "UPDATE expenses SET amount=?, category=?, description=?, date=?, account_id=? WHERE id=? AND user_id=?",
+        (amount, category, description, date_str, account_id, expense_id, user_id),
     )
     conn.commit()
     updated = cur.rowcount
@@ -250,9 +366,26 @@ def update_expense_row(expense_id: int, user_id: int, amount: float, category: s
 
 
 def delete_expense_row(expense_id: int, user_id: int) -> bool:
+    """Delete an expense and restore the amount to the linked account balance."""
     conn = connect_db()
     cur = conn.cursor()
-    cur.execute("DELETE FROM expenses WHERE id=? AND user_id=?", (expense_id, user_id))
+    
+    # Get the expense data to restore balance
+    cur.execute("SELECT amount, account_id FROM expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+    expense = cur.fetchone()
+    
+    if expense:
+        amount, account_id = expense
+        
+        # Restore balance to account (add back the amount)
+        if account_id:
+            cur.execute(
+                "UPDATE accounts SET balance = balance + ? WHERE id = ? AND user_id = ?",
+                (amount, account_id, user_id),
+            )
+    
+    # Delete the expense
+    cur.execute("DELETE FROM expenses WHERE id=? AND user_id=?",(expense_id, user_id))
     conn.commit()
     deleted = cur.rowcount
     conn.close()
@@ -264,6 +397,16 @@ def total_expenses_by_user(user_id: int) -> float:
     conn = connect_db()
     cur = conn.cursor()
     cur.execute("SELECT SUM(amount) FROM expenses WHERE user_id=?", (user_id,))
+    t = cur.fetchone()[0]
+    conn.close()
+    return float(t) if t else 0.0
+
+
+def total_expenses_by_account(user_id: int, account_id: int) -> float:
+    """Get total expenses for a specific account."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT SUM(amount) FROM expenses WHERE user_id=? AND account_id=?", (user_id, account_id))
     t = cur.fetchone()[0]
     conn.close()
     return float(t) if t else 0.0
@@ -281,16 +424,22 @@ def category_summary_by_user(user_id: int):
 # ----- ACCOUNT CRUD -----
 def insert_account(user_id: int, name: str, account_number: str, account_type: str, 
                    balance: float, currency: str, color: str, created_at: str) -> int:
-    """Insert a new account and return its ID."""
+    """Insert a new account and return its ID. If this is the first account, it becomes primary."""
     conn = connect_db()
     cur = conn.cursor()
+    
+    # Check if user has any existing accounts - if not, this will be primary
+    cur.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,))
+    existing_count = cur.fetchone()[0]
+    is_primary = 1 if existing_count == 0 else 0
+    
     # Get next sort order
     cur.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM accounts WHERE user_id = ?", (user_id,))
     next_order = cur.fetchone()[0]
     cur.execute(
         """INSERT INTO accounts (user_id, name, account_number, type, balance, currency, color, is_primary, status, sort_order, created_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?)""",
-        (user_id, name, account_number, account_type, balance, currency, color, next_order, created_at),
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)""",
+        (user_id, name, account_number, account_type, balance, currency, color, is_primary, next_order, created_at),
     )
     conn.commit()
     account_id = cur.lastrowid
@@ -390,11 +539,115 @@ def delete_account(account_id: int, user_id: int) -> bool:
     return deleted > 0
 
 
+def set_account_as_primary(user_id: int, account_id: int) -> bool:
+    """Set an account as the primary account for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    # First, unset all other accounts as primary
+    cur.execute("UPDATE accounts SET is_primary = 0 WHERE user_id = ?", (user_id,))
+    # Then set the specified account as primary
+    cur.execute("UPDATE accounts SET is_primary = 1 WHERE id = ? AND user_id = ?", (account_id, user_id))
+    conn.commit()
+    updated = cur.rowcount
+    conn.close()
+    return updated > 0
+
+
+def get_primary_account(user_id: int):
+    """Get the primary account for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id, name, account_number, type, balance, currency, color, is_primary, created_at 
+           FROM accounts WHERE user_id = ? AND is_primary = 1 LIMIT 1""",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 def get_total_balance_by_user(user_id: int) -> float:
     """Get total balance across all accounts for a user."""
     conn = connect_db()
     cur = conn.cursor()
-    cur.execute("SELECT SUM(balance) FROM accounts WHERE user_id = ?", (user_id,))
+    cur.execute("SELECT SUM(balance) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,))
     total = cur.fetchone()[0]
     conn.close()
     return float(total) if total else 0.0
+
+
+def get_selected_account(user_id: int):
+    """Get the currently selected account for display on home page.
+    If no account is selected, returns the primary account."""
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    # First check if user has a selected_account_id stored
+    selected_id = None
+    try:
+        cur.execute("SELECT selected_account_id FROM users WHERE id = ?", (user_id,))
+        row = cur.fetchone()
+        if row and row[0] is not None:
+            selected_id = row[0]
+    except Exception as e:
+        print(f"Error getting selected_account_id: {e}")
+    
+    if selected_id is not None:
+        # Get the selected account
+        cur.execute(
+            """SELECT id, name, account_number, type, balance, currency, color, is_primary, created_at 
+               FROM accounts WHERE id = ? AND user_id = ? AND status = 'active'""",
+            (selected_id, user_id),
+        )
+        account = cur.fetchone()
+        if account:
+            conn.close()
+            return account
+        # If selected account not found (deleted?), clear the selection
+        cur.execute("UPDATE users SET selected_account_id = NULL WHERE id = ?", (user_id,))
+        conn.commit()
+    
+    # Fallback to primary account
+    cur.execute(
+        """SELECT id, name, account_number, type, balance, currency, color, is_primary, created_at 
+           FROM accounts WHERE user_id = ? AND is_primary = 1 AND status = 'active' LIMIT 1""",
+        (user_id,),
+    )
+    account = cur.fetchone()
+    conn.close()
+    return account
+
+
+def set_selected_account(user_id: int, account_id: int) -> bool:
+    """Set the selected account for a user to display on home page."""
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    # Add column if it doesn't exist
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN selected_account_id INTEGER")
+        conn.commit()
+    except:
+        pass  # Column already exists
+    
+    cur.execute("UPDATE users SET selected_account_id = ? WHERE id = ?", (account_id, user_id))
+    conn.commit()
+    updated = cur.rowcount
+    conn.close()
+    print(f"set_selected_account: user_id={user_id}, account_id={account_id}, updated={updated}")
+    return updated > 0
+
+
+def get_account_by_id(account_id: int, user_id: int):
+    """Get a specific account by ID."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id, name, account_number, type, balance, currency, color, is_primary, created_at 
+           FROM accounts WHERE id = ? AND user_id = ?""",
+        (account_id, user_id),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row

@@ -1,224 +1,204 @@
 # src/main.py
+"""
+Smart Expense Tracker - Main Application
+Flash-free navigation using a persistent container system.
+"""
 import flet as ft
-from ui.login_page import create_login_view
-from ui.register_page import create_register_view
-from ui.onboarding_page import create_onboarding_view
-from ui.personal_details import create_personal_details_view
-from ui.home_page import create_home_view
-from ui.Expenses import create_expenses_view
-from ui.statistics_page import create_statistics_view  # Replaced wallet_page with statistics_page
-from ui.profile_page import create_profile_view
-from ui.account_settings_page import create_account_settings_view
-from ui.add_expense_page import create_add_expense_view
-from utils.statistics import create_charts_view
-from core import db  # ensure DB is created at least once
+from core import db
 from core.theme import get_theme, ThemeManager
 import core.auth as auth
 
+# Import view CONTENT builders (we'll create these)
+from ui.login_page import build_login_content
+from ui.register_page import build_register_content
+from ui.onboarding_page import build_onboarding_content
+from ui.personal_details import build_personal_details_content
+from ui.my_balance import build_my_balance_content
+from ui.home_page import build_home_content
+from ui.Expenses import build_expenses_content
+from ui.statistics_page import build_statistics_content
+from ui.profile_page import build_profile_content
+from ui.account_settings_page import build_account_settings_content
+from ui.add_expense_page import build_add_expense_content
+from ui.all_expenses_page import build_all_expenses_content
+from utils.statistics import create_charts_view
+
+
 def main(page: ft.Page):
-    # App configuration
+    """Main application entry point with flash-free navigation."""
+    
+    # ============ APP CONFIGURATION ============
     page.title = "Smart Expense Tracker"
     page.theme_mode = ft.ThemeMode.DARK
-    
-    # Mobile-friendly settings
     page.padding = 0
     page.spacing = 0
     page.bgcolor = "#0a0a14"
     
-    # Fonts and styling
     page.fonts = {
         "Roboto": "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
     }
     
-    # For desktop testing - simulate mobile screen size
-    # These are ignored on actual mobile devices
     page.window.width = 390
     page.window.height = 844
     page.window.resizable = True
     page.window.maximizable = True
-    
-    # Scroll behavior
-    page.scroll = None  # Let individual views control scrolling
-    
-    # Prevent keyboard from resizing the view
+    page.scroll = None
     page.on_keyboard_event = lambda e: None
 
-    # mutable state
-    state = {"user_id": None, "editing_id": None, "current_view": "login"}
+    # ============ PERSISTENT APP CONTAINER ============
+    # This container stays on the page forever - we only swap its content
+    app_container = ft.Container(
+        expand=True,
+        bgcolor="#0a0a14",
+        padding=0,
+    )
 
-    # Update page bg based on theme
-    def update_page_theme():
+    # ============ APPLICATION STATE ============
+    state = {
+        "user_id": None,
+        "editing_id": None,
+        "current_view": "login",
+        "previous_view": None,
+    }
+
+    # ============ HELPER FUNCTIONS ============
+    def update_theme():
+        """Update page background based on current theme."""
         theme = get_theme()
         page.bgcolor = theme.bg_primary
-        page.update()
-
-    # toast helper
+        app_container.bgcolor = theme.bg_primary
+    
     def toast(message: str, color: str = "#2E7D32"):
+        """Show a toast notification."""
         page.snack_bar = ft.SnackBar(ft.Text(message), bgcolor=color)
         page.snack_bar.open = True
         page.update()
-
-    # Navigation handlers (we create view functions and call them)
-    # will be set later
-    def on_login_success(user_id: int):
-        state["user_id"] = user_id
-        # Check if user has seen onboarding before
-        if db.has_user_seen_onboarding(user_id):
-            show_home_view()  # Existing user - go directly to home
-        else:
-            show_onboarding_view()  # New user - show onboarding
-
-    # Forward declarations for navigation
-    def show_login_view():
-        state["current_view"] = "login"
-        login_view()
-
-    def show_register_view():
-        state["current_view"] = "register"
-        register_view()
-
-    def show_onboarding_view():
-        state["current_view"] = "onboarding"
-        onboarding_view()
     
-    def show_personal_details_view():
-        state["current_view"] = "personal_details"
-        personal_details_view()
+    def navigate_to(view_name: str, content_builder):
+        """Navigate to a view by swapping container content - NO page.clean()!"""
+        state["previous_view"] = state["current_view"]
+        state["current_view"] = view_name
+        update_theme()
+        # Build the new content and swap it in
+        new_content = content_builder()
+        app_container.content = new_content
+        page.update()
 
-    def show_home_view():
-        state["current_view"] = "home"
-        update_page_theme()
-        home_view()
+    # ============ VIEW NAVIGATION FUNCTIONS ============
+    def show_login():
+        navigate_to("login", lambda: build_login_content(
+            page, on_login_success, show_register, show_onboarding, toast
+        ))
+    
+    def show_register():
+        navigate_to("register", lambda: build_register_content(
+            page, on_register_success, show_login, toast, state
+        ))
+    
+    def show_onboarding():
+        navigate_to("onboarding", lambda: build_onboarding_content(
+            page, show_home, state
+        ))
+    
+    def show_personal_details():
+        navigate_to("personal_details", lambda: build_personal_details_content(
+            page, state, toast, show_my_balance, show_register
+        ))
+    
+    def show_my_balance():
+        navigate_to("my_balance", lambda: build_my_balance_content(
+            page, state, toast, show_onboarding, show_personal_details
+        ))
+    
+    def show_home():
+        navigate_to("home", lambda: build_home_content(
+            page, state, toast, show_expenses, do_logout, 
+            show_statistics, show_profile, show_add_expense, show_all_expenses
+        ))
+    
+    def show_expenses():
+        navigate_to("expenses", lambda: build_expenses_content(
+            page, state, toast, show_home, show_statistics, 
+            show_profile, show_add_expense, show_expenses
+        ))
+    
+    def show_statistics():
+        navigate_to("statistics", lambda: build_statistics_content(
+            page, state, toast, show_home, show_expenses, 
+            show_profile, show_add_expense
+        ))
+    
+    def show_profile():
+        navigate_to("profile", lambda: build_profile_content(
+            page, state, toast, show_home, do_logout, 
+            show_account_settings, refresh_current_view
+        ))
+    
+    def show_account_settings():
+        navigate_to("account_settings", lambda: build_account_settings_content(
+            page, state, toast, show_profile
+        ))
+    
+    def show_add_expense():
+        navigate_to("add_expense", lambda: build_add_expense_content(
+            page, state, toast, show_expenses, show_home, 
+            show_expenses, show_statistics, show_profile
+        ))
+    
+    def show_all_expenses():
+        navigate_to("all_expenses", lambda: build_all_expenses_content(
+            page, state, toast, show_home, show_all_expenses
+        ))
 
-    def show_expenses_view():
-        state["current_view"] = "expenses"
-        update_page_theme()
-        expenses_view()
+    # ============ AUTH CALLBACKS ============
+    def on_login_success(user_id: int):
+        """Handle successful login."""
+        state["user_id"] = user_id
+        if db.has_user_seen_onboarding(user_id):
+            show_home()
+        else:
+            show_onboarding()
+    
+    def on_register_success(password: str):
+        """Handle successful registration."""
+        state["temp_password"] = password
+        show_personal_details()
+    
+    def do_logout():
+        """Handle logout."""
+        state["user_id"] = None
+        state["editing_id"] = None
+        show_login()
 
-    def show_charts_view():
-        state["current_view"] = "charts"
-        charts_view()
-
-    def show_statistics_view():
-        state["current_view"] = "statistics"
-        update_page_theme()
-        statistics_view()
-
-    def show_profile_view():
-        state["current_view"] = "profile"
-        update_page_theme()
-        profile_view()
-
-    def show_account_settings_view():
-        state["current_view"] = "account_settings"
-        update_page_theme()
-        account_settings_view()
-
-    def show_add_expense_view():
-        state["current_view"] = "add_expense"
-        update_page_theme()
-        add_expense_view()
-
-    # Refresh current view with new theme
+    # ============ REFRESH FUNCTIONS ============
     def refresh_current_view():
-        update_page_theme()
-        current = state.get("current_view", "login")
+        """Force refresh the current view (e.g., after theme change)."""
         view_map = {
-            "login": show_login_view,
-            "register": show_register_view,
-            "onboarding": show_onboarding_view,
-            "personal_details": show_personal_details_view,
-            "home": show_home_view,
-            "expenses": show_expenses_view,
-            "statistics": show_statistics_view,
-            "profile": show_profile_view,
-            "account_settings": show_account_settings_view,
-            "add_expense": show_add_expense_view,
+            "login": show_login,
+            "register": show_register,
+            "onboarding": show_onboarding,
+            "personal_details": show_personal_details,
+            "my_balance": show_my_balance,
+            "home": show_home,
+            "expenses": show_expenses,
+            "statistics": show_statistics,
+            "profile": show_profile,
+            "account_settings": show_account_settings,
+            "add_expense": show_add_expense,
         }
+        current = state.get("current_view", "login")
         if current in view_map:
             view_map[current]()
 
-    def do_logout():
-        state["user_id"] = None
-        state["editing_id"] = None
-        show_login_view()
-
-    # Callback for after registration - go to personal details with password
-    def on_register_success(password: str):
-        state["temp_password"] = password
-        show_personal_details_view()
-
-    # Pre-create ALL view factory functions for instant navigation
-    login_view = create_login_view(page, on_login_success, lambda: show_register_view(), lambda: show_onboarding_view(), toast)
-    register_view = create_register_view(page, on_register_success, lambda: show_login_view(), toast, state)
-    onboarding_view = create_onboarding_view(page, lambda: show_home_view(), state)
-    personal_details_view = create_personal_details_view(
-        page, state, toast,
-        on_complete=lambda: show_onboarding_view(),
-        on_back=lambda: show_register_view()
-    )
-    
-    home_view = create_home_view(
-        page, state, toast, 
-        show_dashboard=lambda: show_expenses_view(), 
-        logout_callback=lambda: do_logout(),
-        show_wallet_cb=lambda: show_statistics_view(),
-        show_profile_cb=lambda: show_profile_view(),
-        show_add_expense_cb=lambda: show_add_expense_view()
-    )
-    
-    expenses_view = create_expenses_view(
-        page, state, toast,
-        show_home=lambda: show_home_view(),
-        show_wallet=lambda: show_statistics_view(),
-        show_profile=lambda: show_profile_view(),
-        show_add_expense=lambda: show_add_expense_view()
-    )
-    
-    statistics_view = create_statistics_view(
-        page, state, toast, 
-        go_back=lambda: show_home_view(),
-        show_expenses=lambda: show_expenses_view(),
-        show_profile=lambda: show_profile_view(),
-        show_add_expense=lambda: show_add_expense_view()
-    )
-    
-    profile_view = create_profile_view(
-        page, state, toast, 
-        go_back=lambda: show_home_view(), 
-        logout_callback=lambda: do_logout(),
-        show_account_settings=lambda: show_account_settings_view(),
-        refresh_app=lambda: refresh_current_view()
-    )
-    
-    account_settings_view = create_account_settings_view(
-        page, state, toast,
-        go_back=lambda: show_profile_view()
-    )
-    
-    add_expense_view = create_add_expense_view(
-        page, state, toast, 
-        go_back=lambda: show_expenses_view(),
-        show_home=lambda: show_home_view(),
-        show_expenses=lambda: show_expenses_view(),
-        show_wallet=lambda: show_statistics_view(),
-        show_profile=lambda: show_profile_view()
-    )
-    
-    charts_view = create_charts_view(page)
-
-    # ensure DB exists
+    # ============ INITIALIZE APP ============
     db.connect_db()
-
-    # start app at login
-    show_login_view()
+    
+    # Add the persistent container ONCE - never call page.clean() again!
+    page.add(app_container)
+    
+    # Start at login
+    show_login()
 
 
 if __name__ == "__main__":
-    # Run as mobile app
-    # For web/desktop testing:
     ft.app(target=main, assets_dir="assets")
-    
-    # To build for Android/iOS, use:
-    # flet build apk (for Android)
-    # flet build ipa (for iOS)

@@ -1,7 +1,56 @@
 # src/ui/wallet_page.py
 import flet as ft
 from core import db
+from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
+
+
+def create_user_avatar(user_id: int, radius: int = 22, theme=None):
+    """Create a user avatar based on their profile settings."""
+    if theme is None:
+        theme = get_theme()
+    
+    user_profile = db.get_user_profile(user_id)
+    photo = user_profile.get("photo") if user_profile else None
+    
+    if photo and isinstance(photo, dict):
+        photo_type = photo.get("type", "default")
+        photo_value = photo.get("value")
+        photo_bg = photo.get("bg")
+        
+        if photo_type == "avatar" and photo_value:
+            # Emoji avatar
+            return ft.Container(
+                content=ft.Text(photo_value, size=radius * 0.8),
+                width=radius * 2,
+                height=radius * 2,
+                bgcolor=photo_bg or "#4F46E5",
+                border_radius=radius,
+                alignment=ft.alignment.center,
+            )
+        elif photo_type == "file" and photo_value:
+            # Custom uploaded image
+            return ft.Container(
+                content=ft.Image(
+                    src_base64=photo_value,
+                    width=radius * 2 - 4,
+                    height=radius * 2 - 4,
+                    fit=ft.ImageFit.COVER,
+                    border_radius=radius - 2,
+                ),
+                width=radius * 2,
+                height=radius * 2,
+                bgcolor="transparent",
+                border_radius=radius,
+                alignment=ft.alignment.center,
+            )
+    
+    # Default avatar with user icon
+    return ft.CircleAvatar(
+        bgcolor="#4F46E5",
+        content=ft.Icon(ft.Icons.PERSON, color="white", size=radius * 0.8),
+        radius=radius,
+    )
 
 
 def create_wallet_view(page: ft.Page, state: dict, toast, go_back, 
@@ -46,12 +95,7 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back,
                 controls=[
                     ft.Text("Wallet", size=28, weight=ft.FontWeight.BOLD, color="white"),
                     ft.Container(
-                        content=ft.CircleAvatar(
-                            foreground_image_src="/assets/icon.png",
-                            bgcolor="#4F46E5",
-                            content=ft.Icon(ft.Icons.PERSON, color="white"),
-                            radius=22,
-                        ),
+                        content=create_user_avatar(state["user_id"], radius=22),
                         on_click=lambda e: show_profile_page(),
                         ink=True,
                         border_radius=22,
@@ -223,7 +267,7 @@ def create_wallet_view(page: ft.Page, state: dict, toast, go_back,
             gradient=ft.LinearGradient(
                 begin=ft.alignment.top_center,
                 end=ft.alignment.bottom_center,
-                colors=["#0f0f23", "#0a0a14"],
+                colors=[theme.bg_gradient_start, theme.bg_gradient_end],
             ),
             padding=ft.padding.only(left=20, right=20, top=10, bottom=0),
             content=ft.Column(

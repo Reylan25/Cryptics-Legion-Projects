@@ -36,50 +36,73 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
             "first_day": "Monday",
         }
         
+        # Store error text references for validation
+        error_texts = {}
+        field_containers = {}
+        
         def create_input_field(label: str, hint: str, icon, key: str, keyboard_type=ft.KeyboardType.TEXT):
-            """Create a styled input field."""
+            """Create a styled input field with inline error support."""
+            
+            # Create error text (initially hidden)
+            error_text = ft.Text("", size=11, color="#EF4444", visible=False)
+            error_texts[key] = error_text
             
             def on_change(e):
                 form_data[key] = e.control.value
+                # Clear error when user types
+                if error_text.visible:
+                    error_text.visible = False
+                    field_container.border = ft.border.all(1, BORDER_COLOR)
+                    page.update()
             
             def on_focus(e):
                 e.control.parent.parent.border = ft.border.all(1.5, TEAL_ACCENT)
                 e.control.parent.parent.update()
             
             def on_blur(e):
-                e.control.parent.parent.border = ft.border.all(1, BORDER_COLOR)
-                e.control.parent.parent.update()
+                if not error_text.visible:
+                    e.control.parent.parent.border = ft.border.all(1, BORDER_COLOR)
+                    e.control.parent.parent.update()
+            
+            field_container = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(icon, size=20, color=TEXT_MUTED),
+                        ft.TextField(
+                            hint_text=hint,
+                            hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
+                            border=ft.InputBorder.NONE,
+                            bgcolor="transparent",
+                            color=TEXT_PRIMARY,
+                            text_size=14,
+                            expand=True,
+                            content_padding=ft.padding.symmetric(horizontal=8, vertical=12),
+                            keyboard_type=keyboard_type,
+                            on_change=on_change,
+                            on_focus=on_focus,
+                            on_blur=on_blur,
+                        ),
+                    ],
+                    spacing=12,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                bgcolor=FIELD_BG,
+                border_radius=12,
+                border=ft.border.all(1, BORDER_COLOR),
+                padding=ft.padding.only(left=16, right=12),
+            )
+            field_containers[key] = field_container
             
             return ft.Column(
                 controls=[
-                    ft.Text(label, size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
-                    ft.Container(
-                        content=ft.Row(
-                            controls=[
-                                ft.Icon(icon, size=20, color=TEXT_MUTED),
-                                ft.TextField(
-                                    hint_text=hint,
-                                    hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
-                                    border=ft.InputBorder.NONE,
-                                    bgcolor="transparent",
-                                    color=TEXT_PRIMARY,
-                                    text_size=14,
-                                    expand=True,
-                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=12),
-                                    keyboard_type=keyboard_type,
-                                    on_change=on_change,
-                                    on_focus=on_focus,
-                                    on_blur=on_blur,
-                                ),
-                            ],
-                            spacing=12,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                        bgcolor=FIELD_BG,
-                        border_radius=12,
-                        border=ft.border.all(1, BORDER_COLOR),
-                        padding=ft.padding.only(left=16, right=12),
+                    ft.Row(
+                        controls=[
+                            ft.Text(label, size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
+                            error_text,
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
+                    field_container,
                 ],
                 spacing=8,
             )
@@ -145,6 +168,10 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
             
             phone_input.on_focus = on_focus
             phone_input.on_blur = on_blur
+            
+            # Create error text for phone field
+            phone_error_text = ft.Text("", size=11, color="#EF4444", visible=False)
+            error_texts["phone"] = phone_error_text
             
             def show_country_picker(e):
                 def select_country(country):
@@ -229,25 +256,45 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                 padding=ft.padding.symmetric(horizontal=4, vertical=4),
             )
             
+            phone_field_container = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.PHONE_OUTLINED, size=20, color=TEXT_MUTED),
+                        code_button,
+                        ft.Container(width=1, height=24, bgcolor=BORDER_COLOR),
+                        phone_input,
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                bgcolor=FIELD_BG,
+                border_radius=12,
+                border=ft.border.all(1, BORDER_COLOR),
+                padding=ft.padding.only(left=16, right=12),
+            )
+            field_containers["phone"] = phone_field_container
+            
+            # Clear error when user types
+            original_on_change = phone_input.on_change
+            def phone_on_change_with_clear(e):
+                if original_on_change:
+                    original_on_change(e)
+                if phone_error_text.visible:
+                    phone_error_text.visible = False
+                    phone_field_container.border = ft.border.all(1, BORDER_COLOR)
+                    page.update()
+            phone_input.on_change = phone_on_change_with_clear
+            
             return ft.Column(
                 controls=[
-                    ft.Text("Phone Number", size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
-                    ft.Container(
-                        content=ft.Row(
-                            controls=[
-                                ft.Icon(ft.Icons.PHONE_OUTLINED, size=20, color=TEXT_MUTED),
-                                code_button,
-                                ft.Container(width=1, height=24, bgcolor=BORDER_COLOR),
-                                phone_input,
-                            ],
-                            spacing=8,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                        bgcolor=FIELD_BG,
-                        border_radius=12,
-                        border=ft.border.all(1, BORDER_COLOR),
-                        padding=ft.padding.only(left=16, right=12),
+                    ft.Row(
+                        controls=[
+                            ft.Text("Phone Number", size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
+                            phone_error_text,
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
+                    phone_field_container,
                 ],
                 spacing=8,
             )
@@ -568,47 +615,67 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
         )
         
         def create_username_field():
-            """Create username input field."""
+            """Create username input field with inline error support."""
+            
+            # Create error text for username (initially hidden)
+            username_error_text = ft.Text("", size=11, color="#EF4444", visible=False)
+            error_texts["username"] = username_error_text
+            
             def on_change(e):
                 form_data["username"] = e.control.value
+                # Clear error when user types
+                if username_error_text.visible:
+                    username_error_text.visible = False
+                    username_field_container.border = ft.border.all(1, BORDER_COLOR)
+                    page.update()
             
             def on_focus(e):
                 e.control.parent.parent.border = ft.border.all(1.5, TEAL_ACCENT)
                 page.update()
             
             def on_blur(e):
-                e.control.parent.parent.border = ft.border.all(1, BORDER_COLOR)
-                page.update()
+                if not username_error_text.visible:
+                    e.control.parent.parent.border = ft.border.all(1, BORDER_COLOR)
+                    page.update()
+            
+            username_field_container = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.ALTERNATE_EMAIL_ROUNDED, size=20, color=TEXT_MUTED),
+                        ft.TextField(
+                            hint_text="Choose a unique username",
+                            hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
+                            border=ft.InputBorder.NONE,
+                            bgcolor="transparent",
+                            color=TEXT_PRIMARY,
+                            text_size=14,
+                            expand=True,
+                            content_padding=ft.padding.symmetric(horizontal=8, vertical=12),
+                            on_change=on_change,
+                            on_focus=on_focus,
+                            on_blur=on_blur,
+                        ),
+                    ],
+                    spacing=12,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                bgcolor=FIELD_BG,
+                border_radius=12,
+                border=ft.border.all(1, BORDER_COLOR),
+                padding=ft.padding.only(left=16, right=12),
+            )
+            field_containers["username"] = username_field_container
             
             return ft.Column(
                 controls=[
-                    ft.Text("Username", size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
-                    ft.Container(
-                        content=ft.Row(
-                            controls=[
-                                ft.Icon(ft.Icons.ALTERNATE_EMAIL_ROUNDED, size=20, color=TEXT_MUTED),
-                                ft.TextField(
-                                    hint_text="Choose a unique username",
-                                    hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
-                                    border=ft.InputBorder.NONE,
-                                    bgcolor="transparent",
-                                    color=TEXT_PRIMARY,
-                                    text_size=14,
-                                    expand=True,
-                                    content_padding=ft.padding.symmetric(horizontal=8, vertical=12),
-                                    on_change=on_change,
-                                    on_focus=on_focus,
-                                    on_blur=on_blur,
-                                ),
-                            ],
-                            spacing=12,
-                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        ),
-                        bgcolor=FIELD_BG,
-                        border_radius=12,
-                        border=ft.border.all(1, BORDER_COLOR),
-                        padding=ft.padding.only(left=16, right=12),
+                    ft.Row(
+                        controls=[
+                            ft.Text("Username", size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
+                            username_error_text,
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
+                    username_field_container,
                     ft.Text("3-20 characters, letters, numbers, underscore only", size=11, color=TEXT_MUTED),
                     ft.Text("📌 This will be your login username", size=11, color=TEAL_ACCENT, italic=True),
                 ],
@@ -629,38 +696,69 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
                 return False, "Username can only contain letters, numbers, and underscores"
             return True, ""
         
+        def show_field_error(key: str, message: str):
+            """Show inline error for a field."""
+            if key in error_texts:
+                error_texts[key].value = message
+                error_texts[key].visible = True
+            if key in field_containers:
+                field_containers[key].border = ft.border.all(1.5, "#EF4444")
+            page.update()
+        
+        def clear_field_error(key: str):
+            """Clear inline error for a field."""
+            if key in error_texts:
+                error_texts[key].visible = False
+            if key in field_containers:
+                field_containers[key].border = ft.border.all(1, BORDER_COLOR)
+        
+        def clear_all_errors():
+            """Clear all field errors."""
+            for key in error_texts:
+                clear_field_error(key)
+        
         def handle_continue(e):
             """Handle continue button click with validation."""
+            # Clear previous errors
+            clear_all_errors()
+            
+            has_errors = False
+            
             # Validate username first
             username = form_data["username"].strip() if form_data["username"] else ""
             is_valid_username, username_error = validate_username(username)
             if not is_valid_username:
-                toast(username_error, "#b71c1c")
-                return
+                show_field_error("username", username_error)
+                has_errors = True
             
-            # Validate required fields
+            # Validate full name
             if not form_data["full_name"].strip():
-                toast("Please enter your full name", "#b71c1c")
-                return
+                show_field_error("full_name", "Please enter full name")
+                has_errors = True
             
+            # Validate email
             if not form_data["email"].strip():
-                toast("Please enter your email address", "#b71c1c")
-                return
+                show_field_error("email", "Please enter email")
+                has_errors = True
+            else:
+                # Basic email validation
+                email = form_data["email"].strip()
+                if "@" not in email or "." not in email:
+                    show_field_error("email", "Invalid email format")
+                    has_errors = True
             
-            # Basic email validation
-            email = form_data["email"].strip()
-            if "@" not in email or "." not in email:
-                toast("Please enter a valid email address", "#b71c1c")
-                return
-            
+            # Validate phone
             if not form_data["phone"].strip():
-                toast("Please enter your phone number", "#b71c1c")
-                return
+                show_field_error("phone", "Please enter phone number")
+                has_errors = True
+            else:
+                # Phone number should have at least 10 digits
+                phone_digits = ''.join(filter(str.isdigit, form_data["phone"]))
+                if len(phone_digits) < 10:
+                    show_field_error("phone", "At least 10 digits required")
+                    has_errors = True
             
-            # Phone number should have at least 10 digits
-            phone_digits = ''.join(filter(str.isdigit, form_data["phone"]))
-            if len(phone_digits) < 10:
-                toast("Please enter a valid phone number (at least 10 digits)", "#b71c1c")
+            if has_errors:
                 return
             
             # Get password from state (set by register page)
@@ -899,3 +997,175 @@ def create_personal_details_view(page: ft.Page, state: dict, toast, on_complete,
         page.update()
     
     return show_view
+
+
+# ============ NEW: Content builder for flash-free navigation ============
+def build_personal_details_content(page: ft.Page, state: dict, toast, on_complete, on_back=None):
+    """
+    Builds and returns personal details page content WITHOUT calling page.clean() or page.add().
+    This is a simplified version - for full functionality, use create_personal_details_view.
+    """
+    # Theme colors
+    BG_COLOR = "#0a0a0a"
+    CARD_BG = "#1a1a1a"
+    FIELD_BG = "#252525"
+    BORDER_COLOR = "#333333"
+    TEXT_PRIMARY = "#FFFFFF"
+    TEXT_SECONDARY = "#9CA3AF"
+    TEXT_MUTED = "#6B7280"
+    TEAL_ACCENT = "#14B8A6"
+    
+    form_data = {"username": "", "full_name": "", "email": "", "phone": "", "currency": "PHP"}
+    
+    def create_field(label, hint, icon, key):
+        def on_change(e):
+            form_data[key] = e.control.value
+        
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(icon, size=20, color=TEXT_MUTED),
+                ft.TextField(
+                    hint_text=hint,
+                    hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
+                    border=ft.InputBorder.NONE,
+                    bgcolor="transparent",
+                    color=TEXT_PRIMARY,
+                    text_size=14,
+                    expand=True,
+                    on_change=on_change,
+                ),
+            ]),
+            bgcolor=FIELD_BG,
+            border_radius=12,
+            padding=ft.padding.only(left=16, right=8),
+            border=ft.border.all(1, BORDER_COLOR),
+        )
+    
+    def handle_continue(e):
+        username = form_data["username"].strip()
+        full_name = form_data["full_name"].strip()
+        email = form_data["email"].strip()
+        phone = form_data["phone"].strip()
+        
+        if not username:
+            toast("Please enter a username", "#EF4444")
+            return
+        if len(username) < 3:
+            toast("Username must be at least 3 characters", "#EF4444")
+            return
+        
+        # Check if username exists
+        if db.get_user_by_username(username):
+            toast("Username already taken", "#EF4444")
+            return
+        
+        # Register user
+        password = state.get("temp_password", "")
+        if not password:
+            toast("Session expired. Please start registration again.", "#EF4444")
+            return
+            
+        ok = auth.register_user(username, password)
+        
+        if ok:
+            # Get the new user_id
+            user_row = db.get_user_by_username(username)
+            if not user_row:
+                toast("Failed to retrieve user account", "#EF4444")
+                return
+            
+            user_id = user_row[0]
+            state["user_id"] = user_id
+            
+            # Clear temp password
+            state["temp_password"] = None
+            
+            # Save profile
+            profile_data = {
+                "username": username,
+                "full_name": full_name,
+                "email": email,
+                "phone": phone,
+                "currency": form_data.get("currency", "PHP"),
+                "firstName": full_name.split()[0] if full_name else username,
+            }
+            db.save_personal_details(user_id, profile_data)
+            
+            toast("Account created successfully!", TEAL_ACCENT)
+            on_complete()
+        else:
+            toast("Failed to create account", "#EF4444")
+    
+    # Header
+    header = ft.Container(
+        content=ft.Row([
+            ft.IconButton(
+                icon=ft.Icons.ARROW_BACK_ROUNDED,
+                icon_color=TEXT_PRIMARY,
+                icon_size=22,
+                on_click=lambda e: on_back() if on_back else None,
+            ),
+            ft.Column([
+                ft.Text("Personal Details", size=20, color=TEXT_PRIMARY, weight=ft.FontWeight.BOLD),
+                ft.Text("Tell us about yourself", size=12, color=TEXT_SECONDARY),
+            ], spacing=2, expand=True),
+            ft.Container(
+                content=ft.Text("1/2", size=12, color=TEXT_SECONDARY),
+                bgcolor=FIELD_BG,
+                border_radius=20,
+                padding=ft.padding.symmetric(horizontal=12, vertical=6),
+            ),
+        ]),
+        padding=ft.padding.only(left=8, right=16, top=16, bottom=8),
+    )
+    
+    # Form fields
+    form = ft.Container(
+        content=ft.Column([
+            ft.Text("Account Info", size=16, color=TEXT_PRIMARY, weight=ft.FontWeight.W_600),
+            ft.Container(height=8),
+            create_field("Username", "Choose a username", ft.Icons.ALTERNATE_EMAIL_ROUNDED, "username"),
+            ft.Container(height=12),
+            create_field("Full Name", "Enter your full name", ft.Icons.PERSON_OUTLINE_ROUNDED, "full_name"),
+            ft.Container(height=12),
+            create_field("Email", "Enter your email", ft.Icons.EMAIL_OUTLINED, "email"),
+            ft.Container(height=12),
+            create_field("Phone", "Enter phone number", ft.Icons.PHONE_OUTLINED, "phone"),
+        ]),
+        bgcolor=CARD_BG,
+        border_radius=20,
+        padding=20,
+        margin=ft.margin.symmetric(horizontal=16),
+        border=ft.border.all(1, BORDER_COLOR),
+    )
+    
+    # Continue button
+    continue_btn = ft.Container(
+        content=ft.ElevatedButton(
+            content=ft.Row([
+                ft.Text("Continue", size=16, weight=ft.FontWeight.W_600),
+                ft.Icon(ft.Icons.ARROW_FORWARD_ROUNDED, size=20),
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=8),
+            style=ft.ButtonStyle(
+                bgcolor={ft.ControlState.DEFAULT: TEAL_ACCENT},
+                color={ft.ControlState.DEFAULT: TEXT_PRIMARY},
+                padding=ft.padding.symmetric(vertical=16),
+                shape=ft.RoundedRectangleBorder(radius=14),
+            ),
+            on_click=handle_continue,
+            width=float("inf"),
+        ),
+        padding=ft.padding.symmetric(horizontal=16, vertical=16),
+    )
+    
+    return ft.Container(
+        content=ft.Column([
+            header,
+            ft.Container(
+                content=ft.Column([form, continue_btn], spacing=16),
+                expand=True,
+            ),
+        ], spacing=0, expand=True),
+        bgcolor=BG_COLOR,
+        expand=True,
+    )

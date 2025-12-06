@@ -270,3 +270,230 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
     login_btn = None
 
     return show_view
+
+
+# ============ NEW: Content builder for flash-free navigation ============
+def build_login_content(page: ft.Page, on_success, show_register, show_onboarding, toast):
+    """
+    Builds and returns login page content WITHOUT calling page.clean() or page.add().
+    """
+    from core import db
+    theme = get_theme()
+    
+    # Error message text
+    error_icon = ft.Icon(ft.Icons.ERROR_OUTLINE, color="#EF4444", size=16, visible=False)
+    error_text = ft.Text("", color="#EF4444", size=12, visible=False)
+    
+    username_field = ft.TextField(
+        hint_text="Username",
+        hint_style=ft.TextStyle(color=theme.text_muted, size=16),
+        border=ft.InputBorder.NONE,
+        color=theme.text_primary,
+        text_size=16,
+        expand=True,
+        cursor_color=theme.text_primary,
+        content_padding=ft.padding.symmetric(vertical=12),
+    )
+    
+    password_field = ft.TextField(
+        hint_text="Password",
+        hint_style=ft.TextStyle(color=theme.text_muted, size=16),
+        border=ft.InputBorder.NONE,
+        color=theme.text_primary,
+        text_size=16,
+        expand=True,
+        password=True,
+        cursor_color=theme.text_primary,
+        content_padding=ft.padding.symmetric(vertical=12),
+    )
+    
+    password_eye = ft.IconButton(
+        icon=ft.Icons.VISIBILITY_OFF,
+        icon_color=theme.text_muted,
+        icon_size=20,
+        style=ft.ButtonStyle(padding=0),
+    )
+    
+    def toggle_password(e):
+        password_field.password = not password_field.password
+        password_eye.icon = ft.Icons.VISIBILITY if not password_field.password else ft.Icons.VISIBILITY_OFF
+        page.update()
+    
+    password_eye.on_click = toggle_password
+    
+    def do_login(e):
+        user = username_field.value.strip() if username_field.value else ""
+        pwd = password_field.value.strip() if password_field.value else ""
+        
+        if not user or not pwd:
+            error_icon.visible = True
+            error_text.visible = True
+            error_text.value = "Please enter username and password"
+            page.update()
+            return
+        
+        user_id = auth.login_user(user, pwd)
+        if user_id:
+            on_success(user_id)
+        else:
+            error_icon.visible = True
+            error_text.visible = True
+            error_text.value = "Invalid credentials"
+            page.update()
+    
+    # Logo
+    logo = ft.Container(
+        content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=60, color=theme.accent_primary),
+        width=100,
+        height=100,
+        bgcolor=theme.bg_card,
+        border_radius=20,
+        alignment=ft.alignment.center,
+    )
+    
+    # Get recent usernames
+    recent_usernames = db.get_recent_usernames(3)
+    
+    def select_username(username):
+        def handler(e):
+            username_field.value = username
+            recent_users_container.visible = False
+            page.update()
+        return handler
+    
+    # Build recent usernames row (hidden by default)
+    recent_users_row = ft.Row(
+        controls=[
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.PERSON, color=theme.accent_secondary, size=14),
+                    ft.Text(uname, size=12, color=theme.text_primary),
+                ], spacing=4),
+                bgcolor=theme.bg_card,
+                border_radius=15,
+                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                on_click=select_username(uname),
+                ink=True,
+            )
+            for uname in recent_usernames
+        ],
+        spacing=8,
+        alignment=ft.MainAxisAlignment.CENTER,
+        wrap=True,
+    ) if recent_usernames else ft.Container()
+    
+    # Container for recent users (hidden by default, shown on focus)
+    recent_users_container = ft.Container(
+        content=recent_users_row,
+        width=300,
+        padding=ft.padding.only(top=8, bottom=4),
+        visible=False,
+    ) if recent_usernames else ft.Container()
+    
+    def on_username_focus(e):
+        if recent_usernames:
+            recent_users_container.visible = True
+            page.update()
+    
+    def on_username_blur(e):
+        # Small delay to allow click on username chip before hiding
+        import time
+        def hide_after_delay():
+            time.sleep(0.2)
+            if hasattr(recent_users_container, 'visible'):
+                recent_users_container.visible = False
+                page.update()
+        import threading
+        threading.Thread(target=hide_after_delay, daemon=True).start()
+    
+    username_field.on_focus = on_username_focus
+    
+    # Username field with icon and underline
+    username_cont = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.Icons.PERSON_OUTLINE, color=theme.accent_secondary, size=22),
+                ft.Container(width=12),
+                username_field,
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ], spacing=0),
+        width=300,
+        border=ft.border.only(bottom=ft.BorderSide(1, theme.border_primary)),
+        padding=ft.padding.only(bottom=8),
+    )
+    
+    # Password field with icon, eye toggle, and underline
+    password_cont = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.Icons.LOCK_OUTLINE, color=theme.accent_secondary, size=22),
+                ft.Container(width=12),
+                password_field,
+                password_eye,
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        ], spacing=0),
+        width=300,
+        border=ft.border.only(bottom=ft.BorderSide(1, theme.border_primary)),
+        padding=ft.padding.only(bottom=8),
+    )
+    
+    login_btn = ft.Container(
+        content=ft.Text("Sign In", color="white", weight=ft.FontWeight.BOLD, size=16),
+        width=300,
+        height=55,
+        bgcolor=theme.accent_primary,
+        border_radius=12,
+        alignment=ft.alignment.center,
+        on_click=do_login,
+        ink=True,
+    )
+    
+    forgot_password = ft.TextButton(
+        "Forgot Password?",
+        style=ft.ButtonStyle(color=theme.accent_secondary),
+    )
+    
+    return ft.Container(
+        expand=True,
+        gradient=ft.RadialGradient(
+            center=ft.alignment.center,
+            radius=0.8,
+            colors=[theme.bg_gradient_start, theme.bg_primary, theme.bg_gradient_end]
+        ),
+        padding=20,
+        content=ft.Column([
+            ft.Container(height=30),
+            logo,
+            ft.Container(height=15),
+            ft.Text("Welcome Back!", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+            ft.Container(height=4),
+            ft.Text("Sign in to continue tracking your expenses", size=13, color=theme.text_secondary),
+            ft.Container(height=25),
+            ft.Container(
+                content=ft.Row([error_icon, error_text], spacing=8),
+                padding=ft.padding.only(bottom=10),
+            ),
+            username_cont,
+            # Recent usernames chips (shown on focus)
+            recent_users_container,
+            ft.Container(height=8),
+            password_cont,
+            ft.Container(height=8),
+            ft.Container(content=forgot_password, width=300, alignment=ft.alignment.center_right),
+            ft.Container(height=18),
+            login_btn,
+            ft.Container(height=18),
+            ft.Row([
+                ft.Container(height=1, width=100, bgcolor=theme.border_primary),
+                ft.Text("  or  ", color=theme.text_muted, size=12),
+                ft.Container(height=1, width=100, bgcolor=theme.border_primary),
+            ], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Container(height=18),
+            ft.Row([
+                ft.Text("Don't have an account?", color=theme.text_secondary, size=14),
+                ft.TextButton("Sign Up", on_click=lambda e: show_register(), 
+                             style=ft.ButtonStyle(color=theme.accent_secondary))
+            ], alignment=ft.MainAxisAlignment.CENTER),
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        alignment=ft.alignment.top_center
+    )

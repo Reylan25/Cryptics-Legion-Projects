@@ -102,22 +102,35 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
             toast("Amount must be greater than 0", "#b71c1c")
             return
         
+        # Get the selected account (to deduct balance from)
+        selected_account = db.get_selected_account(state["user_id"])
+        account_id = selected_account[0] if selected_account else None
+        account_name = selected_account[1] if selected_account else "Unknown"
+        
+        # Check if account has enough balance
+        if selected_account:
+            account_balance = selected_account[4]  # balance column
+            if amount > account_balance:
+                toast(f"Insufficient balance in {account_name} (₱{account_balance:,.2f})", "#b71c1c")
+                return
+        
         # Get the proper category and description
         # If brand was detected, use the detected_category, otherwise use the selected value as category
         expense_category = selected_category.get('detected_category', selected_category['value'])
         # Use the display name (brand name or custom category) as description
         expense_description = selected_category['value']
         
-        # Save to database
+        # Save to database with account_id - this will also deduct from account balance
         db.insert_expense(
             state["user_id"],
             amount,
             expense_category,
             expense_description,
-            datetime.now().strftime("%Y-%m-%d")
+            datetime.now().strftime("%Y-%m-%d"),
+            account_id
         )
         
-        toast("Expense added successfully!", "#2E7D32")
+        toast(f"Expense added! Deducted ₱{amount:,.2f} from {account_name}", "#2E7D32")
         nav_back()
     
     def show_view():
@@ -493,6 +506,54 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
             border=ft.border.all(1, theme.border_primary),
         )
         
+        # Get selected account for display
+        selected_account = db.get_selected_account(state["user_id"])
+        account_name = selected_account[1] if selected_account else "No Account"
+        account_balance = selected_account[4] if selected_account else 0
+        account_color = selected_account[6] if selected_account else "#3B82F6"
+        account_type = selected_account[3] if selected_account else "Cash"
+        
+        # Account card - shows which account will be charged
+        account_card = ft.Container(
+            content=ft.Row(
+                controls=[
+                    # Account icon
+                    ft.Container(
+                        content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color="white", size=20),
+                        width=40,
+                        height=40,
+                        border_radius=10,
+                        bgcolor=account_color,
+                        alignment=ft.alignment.center,
+                    ),
+                    ft.Container(width=12),
+                    # Account info
+                    ft.Column(
+                        controls=[
+                            ft.Text("DEDUCT FROM", size=10, color=theme.text_muted, weight=ft.FontWeight.W_500),
+                            ft.Text(account_name, size=15, color=theme.text_primary, weight=ft.FontWeight.W_600),
+                        ],
+                        spacing=2,
+                        expand=True,
+                    ),
+                    # Balance
+                    ft.Column(
+                        controls=[
+                            ft.Text("Balance", size=10, color=theme.text_muted),
+                            ft.Text(f"₱{account_balance:,.2f}", size=14, color="#10B981", weight=ft.FontWeight.W_600),
+                        ],
+                        spacing=2,
+                        horizontal_alignment=ft.CrossAxisAlignment.END,
+                    ),
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            padding=14,
+            border_radius=16,
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, account_color + "50"),
+        )
+        
         # Category card
         category_card = ft.Container(
             content=ft.Column(
@@ -645,6 +706,8 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
         # Scrollable content
         scroll_content = ft.Column(
             controls=[
+                account_card,
+                ft.Container(height=12),
                 transaction_card,
                 ft.Container(height=12),
                 category_card,
@@ -698,3 +761,570 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
         page.update()
     
     return show_view
+
+
+# ============ NEW: Content builder for flash-free navigation ============
+def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
+                               show_home, show_expenses, show_wallet, show_profile):
+    """
+    Builds and returns add expense page content with AI category suggestions,
+    date/time picker, and account selection for deduction.
+    """
+    theme = get_theme()
+    
+    # State
+    now = datetime.now()
+    expense_state = {
+        "category": "Other",
+        "detected_category": None,
+        "category_icon": ft.Icons.CATEGORY,
+        "category_color": "#7C3AED",
+        "is_ai_detected": False,
+        "selected_date": now,
+        "selected_time": now,
+        "selected_account_id": None,
+    }
+    
+    # Get user accounts
+    user_accounts = db.get_accounts_by_user(state["user_id"])
+    selected_account = db.get_selected_account(state["user_id"])
+    if selected_account:
+        expense_state["selected_account_id"] = selected_account[0]
+    elif user_accounts:
+        expense_state["selected_account_id"] = user_accounts[0][0]
+    
+    # ============ UI Components ============
+    
+    # Amount field
+    amount_field = ft.TextField(
+        hint_text="0.00",
+        hint_style=ft.TextStyle(color=theme.text_muted, size=28),
+        border=ft.InputBorder.NONE,
+        bgcolor="transparent",
+        color=theme.text_primary,
+        text_size=28,
+        text_align=ft.TextAlign.CENTER,
+        keyboard_type=ft.KeyboardType.NUMBER,
+        content_padding=0,
+        expand=True,
+    )
+    
+    # Description field with AI detection
+    description_field = ft.TextField(
+        hint_text="What did you spend on?",
+        hint_style=ft.TextStyle(color=theme.text_muted),
+        border=ft.InputBorder.NONE,
+        bgcolor="transparent",
+        color=theme.text_primary,
+        text_size=15,
+        expand=True,
+    )
+    
+    # AI suggestion badge
+    ai_badge = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.Icons.AUTO_AWESOME, color="#FFD700", size=12),
+            ft.Text("AI", size=9, color="#FFD700", weight=ft.FontWeight.BOLD),
+        ], spacing=3),
+        visible=False,
+        padding=ft.padding.symmetric(horizontal=6, vertical=3),
+        border_radius=8,
+        bgcolor=f"{theme.accent_primary}30",
+    )
+    
+    # Category display
+    category_icon_container = ft.Container(
+        content=ft.Icon(ft.Icons.CATEGORY, color="white", size=18),
+        width=36,
+        height=36,
+        border_radius=10,
+        bgcolor="#7C3AED",
+        alignment=ft.alignment.center,
+    )
+    
+    category_text = ft.Text("Select category", size=13, color=theme.text_primary)
+    category_subtext = ft.Text("Tap to choose", size=10, color=theme.text_muted)
+    
+    # Date & Time displays
+    date_text = ft.Text(now.strftime("%b %d"), size=12, color=theme.text_primary)
+    time_text = ft.Text(now.strftime("%I:%M %p"), size=12, color=theme.text_primary)
+    
+    # Account display
+    def get_account_info(account_id):
+        for acc in user_accounts:
+            if acc[0] == account_id:
+                return acc
+        return None
+    
+    current_acc = get_account_info(expense_state["selected_account_id"])
+    account_name_text = ft.Text(
+        current_acc[1] if current_acc else "Select",
+        size=13,
+        color=theme.text_primary,
+    )
+    account_balance_text = ft.Text(
+        f"₱{current_acc[4]:,.0f}" if current_acc else "",
+        size=10,
+        color=theme.text_muted,
+    )
+    account_icon_container = ft.Container(
+        content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color="white", size=16),
+        width=32,
+        height=32,
+        border_radius=8,
+        bgcolor=current_acc[6] if current_acc else theme.accent_primary,
+        alignment=ft.alignment.center,
+    )
+    
+    # ============ AI Category Detection ============
+    def on_description_change(e):
+        input_text = e.control.value.strip() if e.control.value else ""
+        
+        if len(input_text) >= 2:
+            result = identify_brand(input_text)
+            expense_state["category"] = result["category"]
+            expense_state["detected_category"] = result["category"]
+            expense_state["category_icon"] = result["icon"]
+            expense_state["category_color"] = result["color"]
+            expense_state["is_ai_detected"] = result["is_brand"]
+            
+            category_icon_container.content = ft.Icon(result["icon"], color="white", size=18)
+            category_icon_container.bgcolor = result["color"]
+            
+            if result["is_brand"]:
+                category_text.value = result["display_name"]
+                category_subtext.value = f"→ {result['category']}"
+                ai_badge.visible = True
+            else:
+                category_text.value = result["category"]
+                category_subtext.value = "AI suggested"
+                ai_badge.visible = True
+            
+            page.update()
+        else:
+            ai_badge.visible = False
+            category_text.value = expense_state["category"]
+            category_subtext.value = "Tap to choose"
+            page.update()
+    
+    description_field.on_change = on_description_change
+    
+    # ============ Category Picker ============
+    def show_category_picker(e):
+        def select_cat(cat):
+            expense_state["category"] = cat
+            expense_state["is_ai_detected"] = False
+            
+            cat_icons = {
+                "Food & Dining": (ft.Icons.RESTAURANT, "#FF6B35"),
+                "Transport": (ft.Icons.DIRECTIONS_CAR, "#3B82F6"),
+                "Shopping": (ft.Icons.SHOPPING_BAG, "#EC4899"),
+                "Entertainment": (ft.Icons.MOVIE, "#8B5CF6"),
+                "Bills & Utilities": (ft.Icons.RECEIPT_LONG, "#F59E0B"),
+                "Health": (ft.Icons.MEDICAL_SERVICES, "#10B981"),
+                "Education": (ft.Icons.SCHOOL, "#6366F1"),
+                "Electronics": (ft.Icons.DEVICES, "#06B6D4"),
+                "Groceries": (ft.Icons.LOCAL_GROCERY_STORE, "#84CC16"),
+                "Rent": (ft.Icons.HOME, "#EF4444"),
+                "Travel": (ft.Icons.FLIGHT, "#14B8A6"),
+                "Subscription": (ft.Icons.SUBSCRIPTIONS, "#F43F5E"),
+                "Other": (ft.Icons.CATEGORY, "#7C3AED"),
+            }
+            icon, color = cat_icons.get(cat, (ft.Icons.CATEGORY, "#7C3AED"))
+            expense_state["category_icon"] = icon
+            expense_state["category_color"] = color
+            
+            category_icon_container.content = ft.Icon(icon, color="white", size=18)
+            category_icon_container.bgcolor = color
+            category_text.value = cat
+            category_subtext.value = "Selected"
+            ai_badge.visible = False
+            
+            page.close(sheet)
+            page.update()
+        
+        cat_items = [
+            ("Food & Dining", ft.Icons.RESTAURANT, "#FF6B35"),
+            ("Transport", ft.Icons.DIRECTIONS_CAR, "#3B82F6"),
+            ("Shopping", ft.Icons.SHOPPING_BAG, "#EC4899"),
+            ("Entertainment", ft.Icons.MOVIE, "#8B5CF6"),
+            ("Bills & Utilities", ft.Icons.RECEIPT_LONG, "#F59E0B"),
+            ("Health", ft.Icons.MEDICAL_SERVICES, "#10B981"),
+            ("Education", ft.Icons.SCHOOL, "#6366F1"),
+            ("Electronics", ft.Icons.DEVICES, "#06B6D4"),
+            ("Groceries", ft.Icons.LOCAL_GROCERY_STORE, "#84CC16"),
+            ("Rent", ft.Icons.HOME, "#EF4444"),
+            ("Travel", ft.Icons.FLIGHT, "#14B8A6"),
+            ("Subscription", ft.Icons.SUBSCRIPTIONS, "#F43F5E"),
+            ("Other", ft.Icons.CATEGORY, "#7C3AED"),
+        ]
+        
+        sheet = ft.BottomSheet(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Container(
+                        content=ft.Container(width=40, height=4, bgcolor=theme.text_muted, border_radius=2),
+                        alignment=ft.alignment.center,
+                        padding=ft.padding.only(top=12, bottom=12),
+                    ),
+                    ft.Text("Select Category", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ft.Container(height=12),
+                    ft.Column([
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Container(
+                                    content=ft.Icon(icon, color="white", size=16),
+                                    width=32, height=32, border_radius=8,
+                                    bgcolor=color, alignment=ft.alignment.center,
+                                ),
+                                ft.Container(width=10),
+                                ft.Text(cat, size=14, color=theme.text_primary, expand=True),
+                                ft.Icon(ft.Icons.CHECK_CIRCLE, color=theme.accent_primary, size=18)
+                                if cat == expense_state["category"] else ft.Container(),
+                            ]),
+                            padding=10,
+                            border_radius=10,
+                            bgcolor=f"{theme.accent_primary}15" if cat == expense_state["category"] else "transparent",
+                            on_click=lambda e, c=cat: select_cat(c),
+                            ink=True,
+                        ) for cat, icon, color in cat_items
+                    ], scroll=ft.ScrollMode.AUTO, spacing=4),
+                    ft.Container(height=20),
+                ]),
+                bgcolor=theme.bg_secondary,
+                padding=ft.padding.symmetric(horizontal=16),
+                border_radius=ft.border_radius.only(top_left=20, top_right=20),
+            ),
+            bgcolor=theme.bg_secondary,
+        )
+        page.open(sheet)
+    
+    # ============ Date Picker ============
+    def show_date_picker(e):
+        def on_change(e):
+            if e.control.value:
+                expense_state["selected_date"] = e.control.value
+                date_text.value = e.control.value.strftime("%b %d")
+                page.update()
+        
+        picker = ft.DatePicker(
+            first_date=datetime(2020, 1, 1),
+            last_date=datetime(2030, 12, 31),
+            value=expense_state["selected_date"],
+            on_change=on_change,
+        )
+        page.open(picker)
+    
+    # ============ Time Picker ============
+    def show_time_picker(e):
+        def on_change(e):
+            if e.control.value:
+                expense_state["selected_time"] = datetime.combine(
+                    expense_state["selected_date"].date(), e.control.value
+                )
+                time_text.value = e.control.value.strftime("%I:%M %p")
+                page.update()
+        
+        picker = ft.TimePicker(
+            value=expense_state["selected_time"].time(),
+            on_change=on_change,
+        )
+        page.open(picker)
+    
+    # ============ Account Picker ============
+    def show_account_picker(e):
+        def select_acc(acc):
+            expense_state["selected_account_id"] = acc[0]
+            account_name_text.value = acc[1]
+            account_balance_text.value = f"₱{acc[4]:,.0f}"
+            account_icon_container.bgcolor = acc[6] or theme.accent_primary
+            page.close(sheet)
+            page.update()
+        
+        sheet = ft.BottomSheet(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Container(
+                        content=ft.Container(width=40, height=4, bgcolor=theme.text_muted, border_radius=2),
+                        alignment=ft.alignment.center,
+                        padding=ft.padding.only(top=12, bottom=12),
+                    ),
+                    ft.Text("Deduct From", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ft.Text("Select account", size=12, color=theme.text_muted),
+                    ft.Container(height=12),
+                    ft.Column([
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Container(
+                                    content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color="white", size=16),
+                                    width=36, height=36, border_radius=10,
+                                    bgcolor=acc[6] or theme.accent_primary,
+                                    alignment=ft.alignment.center,
+                                ),
+                                ft.Container(width=10),
+                                ft.Column([
+                                    ft.Text(acc[1], size=13, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                                    ft.Text(f"₱{acc[4]:,.2f} • {acc[3]}", size=11, color=theme.text_muted),
+                                ], spacing=2, expand=True),
+                                ft.Icon(ft.Icons.CHECK_CIRCLE, color=theme.accent_primary, size=18)
+                                if acc[0] == expense_state["selected_account_id"] else ft.Container(),
+                            ]),
+                            padding=10,
+                            border_radius=10,
+                            bgcolor=f"{theme.accent_primary}15" if acc[0] == expense_state["selected_account_id"] else "transparent",
+                            on_click=lambda e, a=acc: select_acc(a),
+                            ink=True,
+                        ) for acc in user_accounts
+                    ], scroll=ft.ScrollMode.AUTO, spacing=6),
+                    ft.Container(height=20),
+                ]),
+                bgcolor=theme.bg_secondary,
+                padding=ft.padding.symmetric(horizontal=16),
+                border_radius=ft.border_radius.only(top_left=20, top_right=20),
+            ),
+            bgcolor=theme.bg_secondary,
+        )
+        page.open(sheet)
+    
+    # ============ Save Expense ============
+    def save_expense(e):
+        try:
+            amount = float(amount_field.value.strip().replace(",", "")) if amount_field.value else 0
+        except ValueError:
+            toast("Please enter a valid amount", "#EF4444")
+            return
+        
+        if amount <= 0:
+            toast("Amount must be greater than 0", "#EF4444")
+            return
+        
+        description = description_field.value.strip() if description_field.value else ""
+        if not description:
+            description = expense_state["category"]
+        
+        if not expense_state["selected_account_id"]:
+            toast("Please select an account", "#EF4444")
+            return
+        
+        acc_info = get_account_info(expense_state["selected_account_id"])
+        if acc_info and amount > acc_info[4]:
+            toast(f"Insufficient balance in {acc_info[1]}", "#EF4444")
+            return
+        
+        expense_datetime = datetime.combine(
+            expense_state["selected_date"].date(),
+            expense_state["selected_time"].time()
+        )
+        date_str = expense_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        
+        category = expense_state.get("detected_category") or expense_state["category"]
+        
+        db.insert_expense(
+            user_id=state["user_id"],
+            amount=amount,
+            category=category,
+            description=description,
+            date_str=date_str,
+            account_id=expense_state["selected_account_id"],
+        )
+        
+        acc_name = acc_info[1] if acc_info else "account"
+        toast(f"₱{amount:,.2f} deducted from {acc_name}", "#10B981")
+        
+        if show_expenses:
+            show_expenses()
+    
+    # ============ Build UI ============
+    
+    # Header
+    header = ft.Container(
+        content=ft.Row([
+            ft.IconButton(
+                icon=ft.Icons.ARROW_BACK_IOS_NEW_ROUNDED,
+                icon_color=theme.text_primary,
+                icon_size=20,
+                on_click=lambda e: show_expenses() if show_expenses else None,
+            ),
+            ft.Text("Add Expense", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
+            ft.Container(width=40),
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+        padding=ft.padding.only(bottom=8),
+    )
+    
+    # Amount Card
+    amount_card = ft.Container(
+        content=ft.Column([
+            ft.Text("AMOUNT", size=10, color=theme.text_muted, weight=ft.FontWeight.W_600),
+            ft.Container(height=6),
+            ft.Row([
+                ft.Text("₱", size=28, color=theme.accent_primary, weight=ft.FontWeight.BOLD),
+                amount_field,
+            ], alignment=ft.MainAxisAlignment.CENTER),
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        bgcolor=theme.bg_card,
+        border_radius=16,
+        padding=20,
+        border=ft.border.all(1, theme.border_primary),
+    )
+    
+    # Description Card with AI
+    description_card = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Text("DESCRIPTION", size=10, color=theme.text_muted, weight=ft.FontWeight.W_600),
+                ai_badge,
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Container(height=10),
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.EDIT_NOTE, color=theme.text_muted, size=20),
+                    ft.Container(width=8),
+                    description_field,
+                ]),
+                bgcolor=theme.bg_field,
+                border_radius=12,
+                padding=ft.padding.symmetric(horizontal=12, vertical=10),
+            ),
+        ]),
+        bgcolor=theme.bg_card,
+        border_radius=16,
+        padding=16,
+        border=ft.border.all(1, theme.border_primary),
+    )
+    
+    # Category Card
+    category_card = ft.Container(
+        content=ft.Row([
+            category_icon_container,
+            ft.Container(width=12),
+            ft.Column([
+                category_text,
+                category_subtext,
+            ], spacing=1, expand=True),
+            ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=20),
+        ]),
+        bgcolor=theme.bg_card,
+        border_radius=14,
+        padding=14,
+        border=ft.border.all(1, theme.border_primary),
+        on_click=show_category_picker,
+        ink=True,
+    )
+    
+    # Date & Time Row
+    date_time_row = ft.Row([
+        # Date Card
+        ft.Container(
+            content=ft.Row([
+                ft.Container(
+                    content=ft.Icon(ft.Icons.CALENDAR_TODAY, color="white", size=14),
+                    width=28, height=28, border_radius=7,
+                    bgcolor="#3B82F6", alignment=ft.alignment.center,
+                ),
+                ft.Container(width=8),
+                ft.Column([
+                    ft.Text("Date", size=9, color=theme.text_muted),
+                    date_text,
+                ], spacing=1, expand=True),
+            ]),
+            bgcolor=theme.bg_card,
+            border_radius=12,
+            padding=10,
+            border=ft.border.all(1, theme.border_primary),
+            expand=True,
+            on_click=show_date_picker,
+            ink=True,
+        ),
+        ft.Container(width=8),
+        # Time Card
+        ft.Container(
+            content=ft.Row([
+                ft.Container(
+                    content=ft.Icon(ft.Icons.ACCESS_TIME, color="white", size=14),
+                    width=28, height=28, border_radius=7,
+                    bgcolor="#8B5CF6", alignment=ft.alignment.center,
+                ),
+                ft.Container(width=8),
+                ft.Column([
+                    ft.Text("Time", size=9, color=theme.text_muted),
+                    time_text,
+                ], spacing=1, expand=True),
+            ]),
+            bgcolor=theme.bg_card,
+            border_radius=12,
+            padding=10,
+            border=ft.border.all(1, theme.border_primary),
+            expand=True,
+            on_click=show_time_picker,
+            ink=True,
+        ),
+    ])
+    
+    # Account Card
+    account_card = ft.Container(
+        content=ft.Column([
+            ft.Text("DEDUCT FROM", size=10, color=theme.text_muted, weight=ft.FontWeight.W_600),
+            ft.Container(height=10),
+            ft.Container(
+                content=ft.Row([
+                    account_icon_container,
+                    ft.Container(width=10),
+                    ft.Column([
+                        account_name_text,
+                        account_balance_text,
+                    ], spacing=1, expand=True),
+                    ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color=theme.text_muted, size=22),
+                ]),
+                bgcolor=theme.bg_field,
+                border_radius=12,
+                padding=10,
+                on_click=show_account_picker,
+                ink=True,
+            ),
+        ]),
+        bgcolor=theme.bg_card,
+        border_radius=16,
+        padding=16,
+        border=ft.border.all(1, theme.border_primary),
+    )
+    
+    # Save Button
+    save_button = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.Icons.CHECK_CIRCLE, color="white", size=20),
+            ft.Container(width=8),
+            ft.Text("Save Expense", size=15, weight=ft.FontWeight.W_600, color="white"),
+        ], alignment=ft.MainAxisAlignment.CENTER),
+        bgcolor=theme.accent_primary,
+        border_radius=14,
+        padding=ft.padding.symmetric(vertical=14),
+        on_click=save_expense,
+        ink=True,
+    )
+    
+    # Main content
+    scrollable = ft.Column([
+        amount_card,
+        ft.Container(height=10),
+        description_card,
+        ft.Container(height=10),
+        category_card,
+        ft.Container(height=10),
+        date_time_row,
+        ft.Container(height=10),
+        account_card,
+        ft.Container(height=20),
+        save_button,
+        ft.Container(height=80),
+    ], scroll=ft.ScrollMode.AUTO, expand=True)
+    
+    return ft.Container(
+        expand=True,
+        gradient=ft.LinearGradient(
+            begin=ft.alignment.top_center,
+            end=ft.alignment.bottom_center,
+            colors=[theme.gradient_start, theme.gradient_end],
+        ),
+        padding=ft.padding.only(left=16, right=16, top=10),
+        content=ft.Column([header, scrollable], expand=True, spacing=0),
+    )

@@ -21,5 +21,7 @@ def login_user(username: str, password: str):
     if isinstance(pw_blob, str):
         pw_blob = pw_blob.encode("utf-8")
     if bcrypt.checkpw(password.encode("utf-8"), pw_blob):
+        # Update last login timestamp
+        db.update_last_login(user_id)
         return user_id
     return None
