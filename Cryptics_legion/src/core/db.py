@@ -148,6 +148,20 @@ def connect_db():
         is_active INTEGER NOT NULL DEFAULT 1
     )
     """)
+    
+    # Migration: Add admin profile fields
+    admin_profile_columns = [
+        ("job_title", "TEXT DEFAULT 'System Administrator'"),
+        ("department", "TEXT DEFAULT 'Admin user'"),
+        ("currency", "TEXT DEFAULT 'PHP'"),
+        ("reporting_manager", "TEXT DEFAULT 'None'"),
+        ("avatar", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_type in admin_profile_columns:
+        try:
+            cursor.execute(f"ALTER TABLE admins ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # Admin activity logs
     cursor.execute("""
@@ -881,6 +895,78 @@ def get_admin_by_username(username: str):
     row = cur.fetchone()
     conn.close()
     return row
+
+
+def get_admin_profile(admin_id: int):
+    """Get admin profile data by ID."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, username, full_name, email, role, job_title, department, 
+               currency, reporting_manager, avatar, last_login, created_at
+        FROM admins WHERE id = ?
+    """, (admin_id,))
+    row = cur.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "id": row[0],
+            "username": row[1],
+            "full_name": row[2],
+            "email": row[3],
+            "role": row[4],
+            "job_title": row[5],
+            "department": row[6],
+            "currency": row[7],
+            "reporting_manager": row[8],
+            "avatar": row[9],
+            "last_login": row[10],
+            "created_at": row[11]
+        }
+    return None
+
+
+def update_admin_profile(admin_id: int, full_name: str = None, email: str = None,
+                        job_title: str = None, department: str = None, 
+                        currency: str = None, reporting_manager: str = None, avatar: str = None):
+    """Update admin profile data."""
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    updates = []
+    params = []
+    
+    if full_name is not None:
+        updates.append("full_name = ?")
+        params.append(full_name)
+    if email is not None:
+        updates.append("email = ?")
+        params.append(email)
+    if job_title is not None:
+        updates.append("job_title = ?")
+        params.append(job_title)
+    if department is not None:
+        updates.append("department = ?")
+        params.append(department)
+    if currency is not None:
+        updates.append("currency = ?")
+        params.append(currency)
+    if reporting_manager is not None:
+        updates.append("reporting_manager = ?")
+        params.append(reporting_manager)
+    if avatar is not None:
+        updates.append("avatar = ?")
+        params.append(avatar)
+    
+    if updates:
+        params.append(admin_id)
+        query = f"UPDATE admins SET {', '.join(updates)} WHERE id = ?"
+        cur.execute(query, tuple(params))
+        conn.commit()
+    
+    conn.close()
+    return True
 
 
 def update_admin_last_login(admin_id: int):

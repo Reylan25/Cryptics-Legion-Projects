@@ -14,6 +14,7 @@ from ui.admin_currency_rates_page import AdminCurrencyRatesPage
 from ui.admin_accounting_integration_page import AdminAccountingIntegrationPage
 from ui.admin_all_expenses_page import AdminAllExpensesPage
 from ui.admin_all_accounts_page import AdminAllAccountsPage
+from ui.admin_profile_page import AdminProfilePage
 
 
 class AdminMainLayout:
@@ -322,6 +323,10 @@ class AdminMainLayout:
             page = AdminAllAccountsPage(self.page, self.state, self.handle_navigation)
             return page.build()
         
+        elif route == "admin_profile":
+            page = AdminProfilePage(self.page, self.state, self.handle_navigation)
+            return page.build()
+        
         else:
             # Default placeholder for other routes
             return ft.Container(
@@ -361,13 +366,17 @@ class AdminMainLayout:
             # Navigate to login
             self.on_navigate("login")
         
+        def handle_profile(e):
+            self.page.close(menu)
+            self.handle_navigation("admin_profile")
+        
         menu = ft.AlertDialog(
             content=ft.Container(
                 content=ft.Column([
                     ft.ListTile(
                         leading=ft.Icon(ft.Icons.PERSON_ROUNDED, color=ft.Colors.BLUE_400),
                         title=ft.Text("Profile", color=ft.Colors.WHITE),
-                        on_click=lambda e: self.page.close(menu)
+                        on_click=handle_profile
                     ),
                     ft.ListTile(
                         leading=ft.Icon(ft.Icons.SETTINGS_ROUNDED, color=ft.Colors.GREY_400),

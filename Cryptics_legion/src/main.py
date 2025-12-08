@@ -31,6 +31,7 @@ from ui.admin_users_page import AdminUserManagementPage
 from components.notification import NotificationHistory
 from ui.admin_logs_page import AdminLogsPage
 from ui.admin_main_layout import AdminMainLayout
+from ui.admin_profile_page import AdminProfilePage
 from utils.statistics import create_charts_view
 
 

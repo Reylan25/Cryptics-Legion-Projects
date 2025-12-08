@@ -111,7 +111,8 @@ class AdminDashboardPage:
         
         recent_activity = ft.Container(
             content=ft.Column([
-                ft.Row([
+                # Responsive Header
+                ft.ResponsiveRow([
                     ft.Column([
                         ft.Text(
                             "Recent Activity",
@@ -124,8 +125,7 @@ class AdminDashboardPage:
                             size=13,
                             color=ft.Colors.GREY_400
                         ),
-                    ], spacing=2),
-                    ft.Container(expand=True),
+                    ], spacing=2, col={"xs": 12, "sm": 12, "md": 8}),
                     ft.Container(
                         content=ft.Row([
                             ft.Icon(ft.Icons.HISTORY_ROUNDED, size=16, color=ft.Colors.BLUE_400),
@@ -135,13 +135,15 @@ class AdminDashboardPage:
                                 color=ft.Colors.BLUE_400,
                                 weight=ft.FontWeight.W_500
                             )
-                        ], spacing=6),
+                        ], spacing=6, alignment=ft.MainAxisAlignment.CENTER),
                         bgcolor="#0A2540",
                         padding=ft.padding.symmetric(horizontal=12, vertical=6),
                         border_radius=20,
-                        border=ft.border.all(1, ft.Colors.BLUE_800)
+                        border=ft.border.all(1, ft.Colors.BLUE_800),
+                        col={"xs": 12, "sm": 12, "md": 4},
+                        margin=ft.margin.only(top=10) if self.page.width < 768 else None
                     )
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.START),
                 ft.Container(height=16),
                 ft.Column([
                     self.create_enhanced_activity_item(log, idx) for idx, log in enumerate(recent_logs)
@@ -166,7 +168,7 @@ class AdminDashboardPage:
                     )
                 ], spacing=6)
             ]),
-            padding=20,
+            padding=ft.padding.all(12) if self.page.width < 768 else 20,
             bgcolor="#2C2C2E",
             border_radius=12,
             margin=ft.margin.only(top=8),
@@ -313,6 +315,9 @@ class AdminDashboardPage:
         # log: (id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username)
         log_id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username = log
         
+        # Check if mobile view
+        is_mobile = self.page.width < 768
+        
         # Format timestamp - relative time
         from datetime import datetime
         try:
@@ -410,16 +415,24 @@ class AdminDashboardPage:
         if target_username and target_username != "None":
             action_text += f" → {target_username}"
         
+        # Responsive sizing
+        icon_size = 14 if is_mobile else 16
+        icon_container_size = 32 if is_mobile else 36
+        timeline_width = 36 if is_mobile else 40
+        content_padding = 10 if is_mobile else 14
+        text_size = 13 if is_mobile else 14
+        meta_text_size = 11 if is_mobile else 12
+        
         return ft.Container(
             content=ft.Row([
                 # Timeline dot with connecting line
                 ft.Container(
                     content=ft.Column([
                         ft.Container(
-                            content=ft.Icon(config["icon"], size=16, color=config["color"]),
-                            width=36,
-                            height=36,
-                            border_radius=18,
+                            content=ft.Icon(config["icon"], size=icon_size, color=config["color"]),
+                            width=icon_container_size,
+                            height=icon_container_size,
+                            border_radius=icon_container_size // 2,
                             bgcolor=config["bg"],
                             border=ft.border.all(2, config["border"]),
                             alignment=ft.alignment.center,
@@ -427,64 +440,83 @@ class AdminDashboardPage:
                         # Connecting line (hide for last item)
                         ft.Container(
                             width=2,
-                            height=40,
+                            height=40 if not is_mobile else 36,
                             bgcolor=ft.Colors.GREY_800,
                             visible=index < 9  # Hide line for last item
                         ) if index < 9 else ft.Container()
                     ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                    width=40
+                    width=timeline_width
                 ),
                 # Content
                 ft.Container(
                     content=ft.Column([
-                        ft.Row([
-                            ft.Column([
-                                ft.Row([
-                                    ft.Text(
-                                        action_text,
-                                        size=14,
-                                        weight=ft.FontWeight.W_500,
-                                        color=ft.Colors.WHITE
-                                    ),
-                                    ft.Container(
-                                        content=ft.Text(
-                                            config["category"],
-                                            size=10,
-                                            weight=ft.FontWeight.BOLD,
-                                            color=config["color"]
-                                        ),
-                                        bgcolor=config["bg"],
-                                        padding=ft.padding.symmetric(horizontal=8, vertical=3),
-                                        border_radius=10,
-                                        border=ft.border.all(1, config["border"])
-                                    )
-                                ], spacing=10),
-                                ft.Row([
-                                    ft.Icon(ft.Icons.PERSON_OUTLINE, size=12, color=ft.Colors.GREY_500),
-                                    ft.Text(
-                                        admin_username,
-                                        size=12,
-                                        color=ft.Colors.GREY_400,
-                                        weight=ft.FontWeight.W_500
-                                    ),
-                                    ft.Container(
-                                        content=ft.Text("•", size=12, color=ft.Colors.GREY_600),
-                                        margin=ft.margin.symmetric(horizontal=4)
-                                    ),
-                                    ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=12, color=ft.Colors.GREY_500),
-                                    ft.Text(
-                                        time_str,
-                                        size=12,
-                                        color=ft.Colors.GREY_400,
-                                        tooltip=full_time
-                                    ),
-                                ], spacing=6),
-                            ], spacing=6, expand=True),
-                        ]),
-                    ], spacing=4),
+                        # Action text and category badge - wrap on mobile
+                        ft.Column([
+                            ft.Text(
+                                action_text,
+                                size=text_size,
+                                weight=ft.FontWeight.W_500,
+                                color=ft.Colors.WHITE,
+                                max_lines=2 if is_mobile else None,
+                                overflow=ft.TextOverflow.ELLIPSIS if is_mobile else None
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    config["category"],
+                                    size=9 if is_mobile else 10,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=config["color"]
+                                ),
+                                bgcolor=config["bg"],
+                                padding=ft.padding.symmetric(horizontal=6 if is_mobile else 8, vertical=2 if is_mobile else 3),
+                                border_radius=10,
+                                border=ft.border.all(1, config["border"])
+                            )
+                        ], spacing=8),
+                        # Meta info - stack on mobile
+                        ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.PERSON_OUTLINE, size=meta_text_size, color=ft.Colors.GREY_500),
+                                ft.Text(
+                                    admin_username,
+                                    size=meta_text_size,
+                                    color=ft.Colors.GREY_400,
+                                    weight=ft.FontWeight.W_500
+                                ),
+                            ], spacing=4),
+                            ft.Row([
+                                ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=meta_text_size, color=ft.Colors.GREY_500),
+                                ft.Text(
+                                    time_str,
+                                    size=meta_text_size,
+                                    color=ft.Colors.GREY_400,
+                                    tooltip=full_time
+                                ),
+                            ], spacing=4),
+                        ], spacing=4) if is_mobile else ft.Row([
+                            ft.Icon(ft.Icons.PERSON_OUTLINE, size=meta_text_size, color=ft.Colors.GREY_500),
+                            ft.Text(
+                                admin_username,
+                                size=meta_text_size,
+                                color=ft.Colors.GREY_400,
+                                weight=ft.FontWeight.W_500
+                            ),
+                            ft.Container(
+                                content=ft.Text("•", size=meta_text_size, color=ft.Colors.GREY_600),
+                                margin=ft.margin.symmetric(horizontal=4)
+                            ),
+                            ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=meta_text_size, color=ft.Colors.GREY_500),
+                            ft.Text(
+                                time_str,
+                                size=meta_text_size,
+                                color=ft.Colors.GREY_400,
+                                tooltip=full_time
+                            ),
+                        ], spacing=6),
+                    ], spacing=6),
                     bgcolor="#1C1C1E",
-                    padding=14,
-                    border_radius=10,
+                    padding=content_padding,
+                    border_radius=8 if is_mobile else 10,
                     border=ft.border.all(1, ft.Colors.GREY_800),
                     expand=True,
                     shadow=ft.BoxShadow(
@@ -494,7 +526,7 @@ class AdminDashboardPage:
                         offset=ft.Offset(0, 1)
                     )
                 ),
-            ], spacing=12),
+            ], spacing=8 if is_mobile else 12),
             margin=ft.margin.only(bottom=0)
         )
     
