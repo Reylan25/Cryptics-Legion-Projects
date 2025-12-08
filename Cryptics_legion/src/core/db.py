@@ -134,6 +134,35 @@ def connect_db():
     )
     """)
 
+    # Admin table for system administrators
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password BLOB NOT NULL,
+        full_name TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        role TEXT DEFAULT 'admin',
+        created_at TEXT NOT NULL,
+        last_login TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1
+    )
+    """)
+
+    # Admin activity logs
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admin_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        target_user_id INTEGER,
+        details TEXT,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY(admin_id) REFERENCES admins(id),
+        FOREIGN KEY(target_user_id) REFERENCES users(id)
+    )
+    """)
+
     conn.commit()
     return conn
 
@@ -823,6 +852,162 @@ def has_passcode(user_id: int) -> bool:
     passcode = get_user_passcode(user_id)
     return passcode is not None and passcode != ""
 
+
+# ----- ADMIN functions -----
+def insert_admin(username: str, password_blob: bytes, full_name: str = "", email: str = "") -> bool:
+    """Insert a new admin user."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute(
+            "INSERT INTO admins (username, password, full_name, email, created_at) VALUES (?, ?, ?, ?, ?)",
+            (username, password_blob, full_name, email, created_at)
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+
+def get_admin_by_username(username: str):
+    """Get admin by username."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, password, full_name, email, role, is_active FROM admins WHERE username = ?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def update_admin_last_login(admin_id: int):
+    """Update admin last login timestamp."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute("UPDATE admins SET last_login = ? WHERE id = ?", (timestamp, admin_id))
+    conn.commit()
+    conn.close()
+
+
+def log_admin_activity(admin_id: int, action: str, target_user_id: int = None, details: str = ""):
+    """Log admin activity."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        "INSERT INTO admin_logs (admin_id, action, target_user_id, details, timestamp) VALUES (?, ?, ?, ?, ?)",
+        (admin_id, action, target_user_id, details, timestamp)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_users_for_admin():
+    """Get all users with their statistics for admin dashboard."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT u.id, u.username, u.full_name, u.email, u.last_login, u.has_seen_onboarding,
+               (SELECT COUNT(*) FROM expenses WHERE user_id = u.id) as expense_count,
+               (SELECT SUM(amount) FROM expenses WHERE user_id = u.id) as total_spent
+        FROM users u
+        ORDER BY u.id DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_admin_logs(limit: int = 100):
+    """Get recent admin activity logs."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT al.id, al.admin_id, a.username as admin_username, al.action, 
+               al.target_user_id, u.username as target_username, al.details, al.timestamp
+        FROM admin_logs al
+        LEFT JOIN admins a ON al.admin_id = a.id
+        LEFT JOIN users u ON al.target_user_id = u.id
+        ORDER BY al.timestamp DESC
+        LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_system_statistics():
+    """Get system-wide statistics for admin dashboard."""
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    stats = {}
+    
+    # Total users
+    cur.execute("SELECT COUNT(*) FROM users")
+    stats['total_users'] = cur.fetchone()[0]
+    
+    # Total expenses
+    cur.execute("SELECT COUNT(*) FROM expenses")
+    stats['total_expenses'] = cur.fetchone()[0]
+    
+    # Total amount spent
+    cur.execute("SELECT SUM(amount) FROM expenses")
+    result = cur.fetchone()[0]
+    stats['total_amount'] = result if result else 0
+    
+    # Total accounts
+    cur.execute("SELECT COUNT(*) FROM accounts")
+    stats['total_accounts'] = cur.fetchone()[0]
+    
+    # Active users (logged in last 30 days)
+    cur.execute("""
+        SELECT COUNT(*) FROM users 
+        WHERE last_login IS NOT NULL 
+        AND datetime(last_login) >= datetime('now', '-30 days')
+    """)
+    stats['active_users'] = cur.fetchone()[0]
+    
+    # New users this month
+    cur.execute("""
+        SELECT COUNT(*) FROM users 
+        WHERE datetime(last_login) >= datetime('now', 'start of month')
+    """)
+    stats['new_users_this_month'] = cur.fetchone()[0]
+    
+    conn.close()
+    return stats
+
+
+def delete_user_by_admin(user_id: int) -> bool:
+    """Delete a user and all their data (admin action)."""
+    conn = connect_db()
+    cursor = conn.cursor()
+    try:
+        # Delete all expenses
+        cursor.execute("DELETE FROM expenses WHERE user_id = ?", (user_id,))
+        # Delete all accounts
+        cursor.execute("DELETE FROM accounts WHERE user_id = ?", (user_id,))
+        # Delete passcodes
+        cursor.execute("DELETE FROM passcodes WHERE user_id = ?", (user_id,))
+        # Delete user profile
+        cursor.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
+        # Delete user
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"Error deleting user: {e}")
+        return False
+    finally:
+        conn.close()
 
 def set_biometric_enabled(user_id: int, enabled: bool = True) -> bool:
     """Enable or disable biometric authentication for a user."""

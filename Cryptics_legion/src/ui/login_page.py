@@ -1,6 +1,7 @@
 # src/ui/login_page.py
 import flet as ft
 from core import auth
+from core import admin_auth
 from core.theme import get_theme
 from components.notification import ImmersiveNotification
 
@@ -109,7 +110,37 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
         login_btn.text = "Logging in..."
         page.update()
         
-        # Attempt login
+        # Check if this is an admin user first
+        if admin_auth.is_admin_username(u):
+            print(f"Admin username detected: {u}")
+            success, admin_data = admin_auth.login_admin(u, p)
+            print(f"Admin login result: {success}, data: {admin_data}")
+            
+            if success:
+                username_field.value = ""
+                password_field.value = ""
+                login_btn.disabled = False
+                login_btn.text = "Login"
+                
+                # Show immersive welcome notification
+                notif = ImmersiveNotification(page)
+                notif.show(f"Welcome back, Administrator! System access granted", "success", title="Admin Login Successful! 🔐")
+                
+                # Call success with admin data (special flag for admin)
+                on_success(admin_data["id"], is_admin=True, admin_data=admin_data)
+                return
+            else:
+                # Admin login failed
+                login_btn.disabled = False
+                login_btn.text = "Login"
+                show_error("Invalid admin credentials. Please try again.")
+                
+                # Show error notification
+                notif = ImmersiveNotification(page)
+                notif.show("Please check your admin password", "error", title="Login Failed")
+                return
+        
+        # Attempt regular user login
         uid = auth.login_user(u, p)
         
         if uid:
@@ -340,6 +371,24 @@ def build_login_content(page: ft.Page, on_success, show_register, show_onboardin
             page.update()
             return
         
+        # Check if this is an admin user first
+        if admin_auth.is_admin_username(user):
+            print(f"DEBUG: Admin username detected: {user}")
+            success, admin_data = admin_auth.login_admin(user, pwd)
+            print(f"DEBUG: Admin login result: {success}, data: {admin_data}")
+            
+            if success:
+                print("DEBUG: Calling on_success with admin data")
+                on_success(admin_data["id"], is_admin=True, admin_data=admin_data)
+                return
+            else:
+                error_icon.visible = True
+                error_text.visible = True
+                error_text.value = "Invalid admin credentials"
+                page.update()
+                return
+        
+        # Regular user login
         user_id = auth.login_user(user, pwd)
         if user_id:
             on_success(user_id)

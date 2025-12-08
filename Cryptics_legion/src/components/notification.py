@@ -553,6 +553,15 @@ class NotificationCenter:
         
         self.panel_visible = False
     
+    def close_panel(self):
+        """Close the notification panel immediately (called during navigation)."""
+        if self.notification_panel and self.panel_visible:
+            # Remove immediately without animation
+            if self.notification_panel in self.page.overlay:
+                self.page.overlay.remove(self.notification_panel)
+            self.notification_panel = None
+            self.panel_visible = False
+    
     def _create_notification_item(self, notif):
         """Create a single notification item."""
         # Icon based on type

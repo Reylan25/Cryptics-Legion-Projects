@@ -26,6 +26,9 @@ from ui.all_expenses_page import build_all_expenses_content
 from ui.exchange_rates_page import build_exchange_rates_content
 from ui.privacy_page import build_privacy_content
 from ui.passcode_lock_page import create_passcode_setup, create_passcode_verify
+from ui.admin_dashboard_page import AdminDashboardPage
+from ui.admin_users_page import AdminUserManagementPage
+from ui.admin_logs_page import AdminLogsPage
 from utils.statistics import create_charts_view
 
 
@@ -64,6 +67,8 @@ def main(page: ft.Page):
         "editing_id": None,
         "current_view": "login",
         "previous_view": None,
+        "is_admin": False,
+        "admin": None,
     }
 
     # ============ HELPER FUNCTIONS ============
@@ -84,6 +89,13 @@ def main(page: ft.Page):
         state["previous_view"] = state["current_view"]
         state["current_view"] = view_name
         update_theme()
+        
+        # Close notification panel if open
+        if "notification_center" in state:
+            notification_center = state["notification_center"]
+            if hasattr(notification_center, 'close_panel'):
+                notification_center.close_panel()
+        
         # Build the new content and swap it in
         new_content = content_builder()
         app_container.content = new_content
@@ -196,22 +208,63 @@ def main(page: ft.Page):
         navigate_to("passcode_verify", lambda: create_passcode_verify(
             page, state, on_passcode_verify_success, show_forgot_password
         ))
+    
+    # ============ ADMIN NAVIGATION FUNCTIONS ============
+    def show_admin_dashboard():
+        """Show admin dashboard."""
+        navigate_to("admin_dashboard", lambda: AdminDashboardPage(
+            page, state, navigate_admin
+        ).build())
+    
+    def show_admin_users():
+        """Show admin user management page."""
+        navigate_to("admin_users", lambda: AdminUserManagementPage(
+            page, state, navigate_admin
+        ).build())
+    
+    def show_admin_logs():
+        """Show admin activity logs page."""
+        navigate_to("admin_logs", lambda: AdminLogsPage(
+            page, state, navigate_admin
+        ).build())
+    
+    def navigate_admin(page_name: str):
+        """Navigate between admin pages."""
+        if page_name == "admin_dashboard":
+            show_admin_dashboard()
+        elif page_name == "users":
+            show_admin_users()
+        elif page_name == "logs":
+            show_admin_logs()
+        elif page_name == "login":
+            show_login()
 
     # ============ AUTH CALLBACKS ============
-    def on_login_success(user_id: int):
-        """Handle successful login - check if passcode is set."""
-        state["user_id"] = user_id
+    def on_login_success(user_id: int, is_admin: bool = False, admin_data: dict = None):
+        """Handle successful login - check if admin or regular user."""
         
-        # Check if user has a passcode set up
-        if db.has_passcode(user_id):
-            # Show passcode verification before entering app
-            show_passcode_verify()
+        if is_admin:
+            # Admin login - go directly to admin dashboard
+            state["is_admin"] = True
+            state["admin"] = admin_data
+            state["user_id"] = user_id
+            show_admin_dashboard()
         else:
-            # No passcode set up, proceed normally
-            if db.has_user_seen_onboarding(user_id):
-                show_home()
+            # Regular user login - check passcode
+            state["user_id"] = user_id
+            state["is_admin"] = False
+            state["admin"] = None
+            
+            # Check if user has a passcode set up
+            if db.has_passcode(user_id):
+                # Show passcode verification before entering app
+                show_passcode_verify()
             else:
-                show_onboarding()
+                # No passcode set up, proceed normally
+                if db.has_user_seen_onboarding(user_id):
+                    show_home()
+                else:
+                    show_onboarding()
     
     def on_passcode_verify_success():
         """Handle successful passcode verification."""
@@ -261,6 +314,22 @@ def main(page: ft.Page):
 
     # ============ INITIALIZE APP ============
     db.connect_db()
+    
+    # Initialize default admin account if not exists
+    try:
+        import bcrypt
+        existing_admin = db.get_admin_by_username("ADMIN")
+        if not existing_admin:
+            password_hash = bcrypt.hashpw("ADMIN256".encode("utf-8"), bcrypt.gensalt())
+            db.insert_admin(
+                username="ADMIN",
+                password_blob=password_hash,
+                full_name="System Administrator",
+                email="admin@expensetracker.com"
+            )
+            print("✓ Default admin account created (ADMIN / ADMIN256)")
+    except Exception as e:
+        print(f"Admin initialization note: {e}")
     
     # Add the persistent container ONCE - never call page.clean() again!
     page.add(app_container)
