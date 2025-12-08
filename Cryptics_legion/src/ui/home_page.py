@@ -679,11 +679,22 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
         expenses_list.controls.clear()
         rows = db.select_expenses_by_user(state["user_id"])
         
+        # Cache for account currencies
+        currency_cache = {}
+        def get_expense_currency(acc_id):
+            if acc_id is None:
+                return "PHP"
+            if acc_id not in currency_cache:
+                acc = db.get_account_by_id(acc_id, state["user_id"])
+                currency_cache[acc_id] = acc[5] if acc else "PHP"
+            return currency_cache[acc_id]
+        
         # Show only recent 5 expenses on home
         for r in rows[:5]:
             # Unpack with account_id (position 6)
-            eid, uid, amt, cat, dsc, dtt = r[:6]
+            eid, uid, amt, cat, dsc, dtt, acc_id = r[:7]
             display_name = dsc if dsc else cat
+            expense_currency = get_expense_currency(acc_id)
             
             expenses_list.controls.append(
                 create_expense_item(
@@ -691,7 +702,7 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
                     category=cat,
                     date=format_date(dtt),
                     amount=-amt,  # Expenses are negative
-                    user_currency=user_currency,
+                    user_currency=expense_currency,
                 )
             )
         
@@ -714,6 +725,7 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
         if selected_account:
             account_id = selected_account[0]
             current_balance = selected_account[4]  # Current balance
+            account_currency = selected_account[5]  # Get account's currency
             state["selected_account_name"] = selected_account[1]
             state["selected_account_id"] = account_id
             
@@ -726,23 +738,33 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
             if primary_account:
                 account_id = primary_account[0]
                 current_balance = primary_account[4]
+                account_currency = primary_account[5]  # Get account's currency
                 state["selected_account_name"] = primary_account[1]
                 account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
                 original_budget = current_balance + account_expenses
             else:
-                current_balance = db.get_total_balance_by_user(state["user_id"])
-                original_budget = current_balance
-                state["selected_account_name"] = "Cash"
-                if original_budget <= 0:
+                # Get first available account instead of summing all
+                all_accounts = db.get_accounts_by_user(state["user_id"])
+                if all_accounts:
+                    first_account = all_accounts[0]
+                    account_id = first_account[0]
+                    current_balance = first_account[4]
+                    account_currency = first_account[5]  # Get account's currency
+                    state["selected_account_name"] = first_account[1]
+                    account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
+                    original_budget = current_balance + account_expenses
+                else:
+                    current_balance = 0
                     original_budget = 100000
-                    current_balance = original_budget
+                    account_currency = user_currency  # Use user's default
+                    state["selected_account_name"] = "Cash"
         
         account_name = state.get("selected_account_name", "Cash")
         gauge_container.content = create_circular_gauge(
             balance=current_balance if current_balance > 0 else 0, 
             total_budget=original_budget if original_budget > 0 else 100000, 
             account_name=account_name,
-            user_currency=user_currency
+            user_currency=account_currency
         )
         page.update()
     
@@ -783,6 +805,7 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
             account_id = selected_account[0]
             selected_account_name = selected_account[1]
             current_balance = selected_account[4]  # Current balance (already has expenses deducted)
+            account_currency = selected_account[5]  # Get account's currency
             
             # Calculate original budget = current balance + expenses spent from this account
             account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
@@ -797,16 +820,25 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
                 account_id = primary_account[0]
                 selected_account_name = primary_account[1]
                 current_balance = primary_account[4]
+                account_currency = primary_account[5]  # Get account's currency
                 account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
                 original_budget = current_balance + account_expenses
             else:
-                # Fallback to total balance or default
-                current_balance = db.get_total_balance_by_user(state["user_id"])
-                original_budget = current_balance
-                selected_account_name = "Cash"
-                if original_budget <= 0:
+                # Get first available account instead of summing all
+                all_accounts = db.get_accounts_by_user(state["user_id"])
+                if all_accounts:
+                    first_account = all_accounts[0]
+                    account_id = first_account[0]
+                    selected_account_name = first_account[1]
+                    current_balance = first_account[4]
+                    account_currency = first_account[5]  # Get account's currency
+                    account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
+                    original_budget = current_balance + account_expenses
+                else:
+                    selected_account_name = "Cash"
+                    current_balance = 0
                     original_budget = 100000  # Default fallback
-                    current_balance = original_budget
+                    account_currency = user_currency  # Use user's default
         
         # Create gauge: current_balance is what's remaining, original_budget is the max
         gauge_container.content = create_circular_gauge(
@@ -814,7 +846,7 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
             total_budget=original_budget if original_budget > 0 else 100000, 
             theme=theme, 
             account_name=selected_account_name,
-            user_currency=user_currency
+            user_currency=account_currency
         )
         load_expenses()
         
@@ -1025,35 +1057,54 @@ def build_home_content(page: ft.Page, state: dict, toast,
     # Get time-based greeting
     greeting = get_time_based_greeting()
     
-    # Get user's currency preference
-    user_currency = get_currency_from_user_profile(user_profile)
+    # Get user's default currency preference
+    user_default_currency = get_currency_from_user_profile(user_profile)
     
     # Get selected account and balance data
     selected_account = db.get_selected_account(state["user_id"])
     if selected_account:
         account_id = selected_account[0]
         current_balance = selected_account[4]
+        account_currency = selected_account[5]  # Get account's currency
         account_name = selected_account[1]
         account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
         original_budget = current_balance + account_expenses
+        user_currency = account_currency  # Use account's currency
     else:
         primary_account = db.get_primary_account(state["user_id"])
         if primary_account:
             account_id = primary_account[0]
             current_balance = primary_account[4]
+            account_currency = primary_account[5]  # Get account's currency
             account_name = primary_account[1]
             account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
             original_budget = current_balance + account_expenses
+            user_currency = account_currency  # Use account's currency
         else:
-            account_name = "Cash"
-            current_balance = 0
-            original_budget = 0
+            # Get first available account instead of defaulting to 0
+            all_accounts = db.get_accounts_by_user(state["user_id"])
+            if all_accounts:
+                first_account = all_accounts[0]
+                account_id = first_account[0]
+                current_balance = first_account[4]
+                account_currency = first_account[5]  # Get account's currency
+                account_name = first_account[1]
+                account_expenses = db.total_expenses_by_account(state["user_id"], account_id)
+                original_budget = current_balance + account_expenses
+                user_currency = account_currency  # Use account's currency
+            else:
+                account_name = "Cash"
+                current_balance = 0
+                original_budget = 100000
+                user_currency = user_default_currency  # Fallback to user's default
     
     # Load expenses
     rows = db.select_expenses_by_user(state["user_id"])
     
-    # Cache account names for efficiency
+    # Cache account names and currencies for efficiency
     account_cache = {}
+    currency_cache = {}
+    
     def get_account_name(acc_id):
         if acc_id is None:
             return None
@@ -1062,10 +1113,20 @@ def build_home_content(page: ft.Page, state: dict, toast,
             account_cache[acc_id] = acc[1] if acc else None
         return account_cache[acc_id]
     
+    def get_expense_currency(acc_id):
+        """Get currency from the expense's original account"""
+        if acc_id is None:
+            return "PHP"
+        if acc_id not in currency_cache:
+            acc = db.get_account_by_id(acc_id, state["user_id"])
+            currency_cache[acc_id] = acc[5] if acc else "PHP"
+        return currency_cache[acc_id]
+    
     for r in rows[:5]:
         eid, uid, amt, cat, dsc, dtt, acc_id = r[:7]
         display_name = dsc if dsc else cat
         acc_name = get_account_name(acc_id)
+        expense_currency = get_expense_currency(acc_id)
         expenses_list.controls.append(
             create_expense_item(
                 brand_text=display_name,
@@ -1074,7 +1135,7 @@ def build_home_content(page: ft.Page, state: dict, toast,
                 amount=-amt,
                 theme=theme,
                 account_name=acc_name,
-                user_currency=user_currency,
+                user_currency=expense_currency,
             )
         )
     

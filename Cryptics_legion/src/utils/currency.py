@@ -1,7 +1,10 @@
 """
 Currency Management Module
 Handles currency formatting, conversion, and display across the app
+Integrated with live exchange rates API
 """
+
+from typing import Optional
 
 # Currency symbols and configurations
 CURRENCY_CONFIGS = {
@@ -250,3 +253,69 @@ def get_currency_from_user_profile(profile: dict) -> str:
     
     currency = profile.get("currency", DEFAULT_CURRENCY)
     return parse_currency_string(currency)
+
+
+def convert_amount(amount: float, from_currency: str, to_currency: str) -> float:
+    """
+    Convert amount between currencies using live exchange rates.
+    
+    Args:
+        amount: Amount to convert
+        from_currency: Source currency code
+        to_currency: Target currency code
+    
+    Returns:
+        float: Converted amount
+    """
+    try:
+        from utils.currency_exchange import convert_currency
+        return convert_currency(amount, from_currency, to_currency)
+    except ImportError:
+        # Fallback if exchange API not available
+        return amount
+
+
+def get_live_exchange_rate(from_currency: str, to_currency: str) -> float:
+    """
+    Get live exchange rate between two currencies.
+    
+    Args:
+        from_currency: Source currency code
+        to_currency: Target currency code
+    
+    Returns:
+        float: Exchange rate (1 from_currency = X to_currency)
+    """
+    try:
+        from utils.currency_exchange import get_exchange_rate
+        return get_exchange_rate(from_currency, to_currency)
+    except ImportError:
+        return 1.0
+
+
+def format_currency_with_conversion(amount: float, original_currency: str, 
+                                   target_currency: str, show_original: bool = True) -> str:
+    """
+    Format currency with optional conversion display.
+    
+    Args:
+        amount: Original amount
+        original_currency: Currency of the original amount
+        target_currency: Currency to convert to
+        show_original: Whether to show original amount in parentheses
+    
+    Returns:
+        str: Formatted string like "₱5,000" or "$100 (₱5,000)"
+    """
+    if original_currency == target_currency:
+        return format_currency(amount, original_currency)
+    
+    converted = convert_amount(amount, original_currency, target_currency)
+    target_formatted = format_currency(converted, target_currency)
+    
+    if show_original and original_currency != target_currency:
+        original_formatted = format_currency(amount, original_currency)
+        return f"{target_formatted} ({original_formatted})"
+    
+    return target_formatted
+

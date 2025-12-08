@@ -3,6 +3,7 @@ import flet as ft
 from datetime import datetime
 from core import db
 from utils.brand_recognition import identify_brand, get_brand_suggestions
+from utils.currency import get_currency_symbol
 
 
 # Category options
@@ -44,10 +45,15 @@ CURRENCIES = [
 def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
     """Create the add expense page with modern glass design."""
     
+    # Get selected account to initialize currency
+    selected_account = db.get_selected_account(state["user_id"])
+    account_currency = selected_account[5] if selected_account else "PHP"
+    
     # State variables
     selected_category = {"value": "Electronics"}
     selected_payment = {"value": "Physical Cash"}
     selected_currency = {"value": "Peso (₱)"}
+    selected_currency_code = {"value": account_currency}
     amount_value = {"value": ""}
     
     # Current date/time
@@ -418,6 +424,54 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             )
             page.open(dlg)
         
+        def show_currency_picker_amount(e):
+            """Show currency selection dialog for amount."""
+            def select_curr_code(code, symbol, name):
+                selected_currency_code['value'] = code
+                currency_display_text.value = f"{symbol} {code}"
+                page.close(dlg)
+                page.update()
+            
+            currencies = [
+                ("PHP", "₱", "Philippine Peso"),
+                ("USD", "$", "US Dollar"),
+                ("EUR", "€", "Euro"),
+                ("JPY", "¥", "Japanese Yen"),
+                ("GBP", "£", "British Pound"),
+                ("KRW", "₩", "South Korean Won"),
+                ("SGD", "S$", "Singapore Dollar"),
+                ("AUD", "A$", "Australian Dollar"),
+                ("CAD", "C$", "Canadian Dollar"),
+                ("INR", "₹", "Indian Rupee"),
+            ]
+            
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Select Currency", color="white"),
+                bgcolor="#1a1a3e",
+                content=ft.Column(
+                    controls=[
+                        ft.ListTile(
+                            leading=ft.Text(symbol, size=20, color="white", weight=ft.FontWeight.BOLD),
+                            title=ft.Text(f"{code} - {name}", color="white"),
+                            on_click=lambda e, c=code, s=symbol, n=name: select_curr_code(c, s, n),
+                        ) for code, symbol, name in currencies
+                    ],
+                    scroll=ft.ScrollMode.AUTO,
+                    height=400,
+                ),
+            )
+            page.open(dlg)
+        
+        # Currency display for amount card
+        currency_symbol = get_currency_symbol(selected_currency_code["value"])
+        currency_display_text = ft.Text(
+            f"{currency_symbol} {selected_currency_code['value']}",
+            size=16,
+            color="white",
+            weight=ft.FontWeight.W_500,
+        )
+        
         # Header
         header = ft.Container(
             content=ft.Row(
@@ -484,16 +538,9 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                     ft.Container(height=8),
                     ft.Row(
                         controls=[
-                            ft.Row(
-                                controls=[
-                                    ft.Text("₱", size=18, color="white", weight=ft.FontWeight.W_500),
-                                    amount_field,
-                                ],
-                                spacing=4,
-                            ),
-                            ft.Icon(ft.Icons.EDIT, color="#8888aa", size=20),
+                            amount_field,
                         ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        alignment=ft.MainAxisAlignment.CENTER,
                     ),
                 ],
             ),
@@ -503,15 +550,15 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             border=ft.border.all(1, "#2d2d5a"),
         )
         
-        # Currency card
-        currency_card = ft.Container(
+        # Currency card - for amount currency selection
+        currency_selector_card = ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Text("CURRENCY", size=11, color="#8888aa", weight=ft.FontWeight.W_500),
                     ft.Container(height=8),
                     ft.Row(
                         controls=[
-                            currency_text,
+                            currency_display_text,
                             ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color="#8888aa", size=24),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -522,7 +569,7 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
             border_radius=16,
             bgcolor="#1a1a3e",
             border=ft.border.all(1, "#2d2d5a"),
-            on_click=show_currency_picker,
+            on_click=show_currency_picker_amount,
             ink=True,
         )
         
@@ -611,7 +658,7 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back):
                 ft.Container(height=12),
                 amount_card,
                 ft.Container(height=12),
-                currency_card,
+                currency_selector_card,
                 ft.Container(height=12),
                 payment_card,
                 ft.Container(height=24),

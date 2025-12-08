@@ -868,21 +868,25 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
         expenses_list.controls.clear()
         rows = db.select_expenses_by_user(state["user_id"])
         
-        # Cache account names for efficiency
+        # Cache account info (name and currency) for efficiency
         account_cache = {}
-        def get_account_name(acc_id):
+        def get_account_info(acc_id):
             if acc_id is None:
-                return None
+                return None, user_currency
             if acc_id not in account_cache:
                 acc = db.get_account_by_id(acc_id, state["user_id"])
-                account_cache[acc_id] = acc[1] if acc else None
-            return account_cache[acc_id]
+                if acc:
+                    # acc structure: id, name, account_number, type, balance, currency, color, is_primary, created_at
+                    account_cache[acc_id] = {"name": acc[1], "currency": acc[5]}
+                else:
+                    account_cache[acc_id] = {"name": None, "currency": user_currency}
+            return account_cache[acc_id]["name"], account_cache[acc_id]["currency"]
         
         for r in rows:
             # Unpack with account_id (position 6)
             eid, uid, amt, cat, dsc, dtt, acc_id = r[:7]
             display_name = dsc if dsc else cat
-            acc_name = get_account_name(acc_id)
+            acc_name, acc_currency = get_account_info(acc_id)
             
             expenses_list.controls.append(
                 create_expense_item(
@@ -891,7 +895,7 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                     amount=-amt,  # Expenses are negative
                     theme=theme,
                     account_name=acc_name,
-                    user_currency=user_currency,
+                    user_currency=acc_currency,  # Use account currency
                 )
             )
         
@@ -1188,6 +1192,11 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
         # Get current theme
         theme = get_theme()
         
+        # Get user's default currency for fallback only
+        user_profile = db.get_user_profile(state["user_id"])
+        from utils.currency import get_currency_from_user_profile
+        user_currency = get_currency_from_user_profile(user_profile)
+        
         def show_edit_account_form(account_data):
             """Show form to edit an existing account."""
             acc_id, acc_name, acc_number, acc_type, acc_balance, acc_currency, acc_color, is_primary, created_at, acc_status, sort_order = account_data
@@ -1349,31 +1358,32 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                 label_style=ft.TextStyle(color=theme.text_secondary),
                 border_radius=12,
                 keyboard_type=ft.KeyboardType.NUMBER,
-                prefix_text="₱ ",
-                prefix_style=ft.TextStyle(color=theme.text_secondary),
                 cursor_color=theme.accent_primary,
             )
             
+            # Currency dropdown - uses THIS account's currency, not primary
             currency_dropdown = ft.Dropdown(
-                label="Currency",
+                label="💱 Account Currency",
+                hint_text="Select the currency for this account",
                 value=acc_currency if acc_currency else "PHP",
                 options=[
-                    ft.dropdown.Option(key="PHP", text="₱ Philippine Peso"),
-                    ft.dropdown.Option(key="USD", text="$ US Dollar"),
-                    ft.dropdown.Option(key="EUR", text="€ Euro"),
-                    ft.dropdown.Option(key="JPY", text="¥ Japanese Yen"),
-                    ft.dropdown.Option(key="GBP", text="£ British Pound"),
-                    ft.dropdown.Option(key="KRW", text="₩ Korean Won"),
-                    ft.dropdown.Option(key="SGD", text="S$ Singapore Dollar"),
-                    ft.dropdown.Option(key="AUD", text="A$ Australian Dollar"),
-                    ft.dropdown.Option(key="CAD", text="C$ Canadian Dollar"),
-                    ft.dropdown.Option(key="INR", text="₹ Indian Rupee"),
+                    ft.dropdown.Option(key="PHP", text="₱ Philippine Peso (PHP)"),
+                    ft.dropdown.Option(key="USD", text="$ US Dollar (USD)"),
+                    ft.dropdown.Option(key="EUR", text="€ Euro (EUR)"),
+                    ft.dropdown.Option(key="JPY", text="¥ Japanese Yen (JPY)"),
+                    ft.dropdown.Option(key="GBP", text="£ British Pound (GBP)"),
+                    ft.dropdown.Option(key="KRW", text="₩ Korean Won (KRW)"),
+                    ft.dropdown.Option(key="SGD", text="S$ Singapore Dollar (SGD)"),
+                    ft.dropdown.Option(key="AUD", text="A$ Australian Dollar (AUD)"),
+                    ft.dropdown.Option(key="CAD", text="C$ Canadian Dollar (CAD)"),
+                    ft.dropdown.Option(key="INR", text="₹ Indian Rupee (INR)"),
                 ],
-                border_color=theme.border_primary,
+                border_color=theme.accent_primary,
                 focused_border_color=theme.accent_primary,
-                bgcolor=theme.bg_card,
+                bgcolor=theme.bg_field if theme.is_dark else theme.bg_secondary,
                 color=theme.text_primary,
-                label_style=ft.TextStyle(color=theme.text_secondary),
+                label_style=ft.TextStyle(color=theme.accent_primary, size=14, weight=ft.FontWeight.W_600),
+                hint_style=ft.TextStyle(color=theme.text_muted),
                 border_radius=12,
                 width=None,  # Allow full width
             )
@@ -1488,9 +1498,30 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                             type_dropdown,
                             ft.Container(height=12),
                             balance_field,
-                            ft.Container(height=12),
-                            currency_dropdown,
                             ft.Container(height=16),
+                            # Currency section with visual emphasis
+                            ft.Divider(height=1, color=theme.border_primary),
+                            ft.Container(height=12),
+                            ft.Row([
+                                ft.Icon(ft.Icons.CURRENCY_EXCHANGE, size=16, color=theme.accent_primary),
+                                ft.Text("Currency Settings", size=13, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                            ], spacing=8),
+                            ft.Container(height=8),
+                            currency_dropdown,
+                            ft.Container(
+                                content=ft.Row([
+                                    ft.Icon(ft.Icons.INFO_OUTLINE, size=12, color=theme.text_muted),
+                                    ft.Text(
+                                        "Each account can have its own currency for multi-currency tracking",
+                                        size=11,
+                                        color=theme.text_muted,
+                                        italic=True,
+                                    ),
+                                ], spacing=4),
+                                padding=ft.padding.symmetric(vertical=8),
+                            ),
+                            ft.Divider(height=1, color=theme.border_primary),
+                            ft.Container(height=12),
                             # Status selection
                             ft.Text("Account Status", size=14, color=theme.text_secondary),
                             ft.Container(height=8),
@@ -1533,6 +1564,10 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
         def create_account_settings_card(account_data):
             """Create a card for the account settings list."""
             acc_id, acc_name, acc_number, acc_type, acc_balance, acc_currency, acc_color, is_primary, created_at, acc_status, sort_order = account_data
+            
+            # Handle NULL currency - default to user's currency or PHP
+            if not acc_currency:
+                acc_currency = user_currency if user_currency else "PHP"
             
             # Status badge
             status_badges = {
@@ -1603,13 +1638,25 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                         # Account info
                         ft.Column(
                             controls=[
-                                ft.Text(acc_name, size=15, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                                ft.Row([
+                                    ft.Text(acc_name, size=15, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                                    ft.Container(
+                                        content=ft.Text(acc_currency, size=10, weight=ft.FontWeight.W_600, color="white"),
+                                        padding=ft.padding.symmetric(horizontal=8, vertical=3),
+                                        bgcolor=theme.accent_primary,
+                                        border_radius=6,
+                                    ),
+                                ], spacing=8),
                                 ft.Row(
                                     controls=badges,
                                     spacing=8,
                                 ),
+                                ft.Row([
+                                    ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=12, color=theme.text_muted),
+                                    ft.Text(f"{acc_balance:,.2f}", size=13, weight=ft.FontWeight.W_500, color=theme.text_primary),
+                                ], spacing=4),
                             ],
-                            spacing=2,
+                            spacing=4,
                             expand=True,
                         ),
                         # Edit icon
@@ -2041,7 +2088,7 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                         ),
                         # Balance amount
                         ft.Text(
-                            f"{user_currency} {acc_balance:,.2f}",
+                            f"{acc_currency} {acc_balance:,.2f}",
                             size=18,
                             weight=ft.FontWeight.BOLD,
                             color=text_color if acc_balance >= 0 else theme.error,
@@ -2209,7 +2256,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     balance_header = ft.Row([
         ft.Column([
             ft.Text("Total Balance", size=12, color=theme.text_secondary),
-            ft.Text(f"{user_currency} {total_balance:,.2f}", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+            ft.Text(f"{total_balance:,.2f}", size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
         ], spacing=2),
         ft.Icon(ft.Icons.VISIBILITY, color=theme.text_muted, size=20),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
@@ -2230,7 +2277,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                     ),
                     ft.Column([
                         ft.Text(acc_name, size=14, color=theme.text_primary, weight=ft.FontWeight.W_500),
-                        ft.Text(f"{user_currency} {balance:,.2f}", size=12, color=theme.text_secondary),
+                        ft.Text(f"{currency} {balance:,.2f}", size=12, color=theme.text_secondary),
                     ], spacing=2, expand=True),
                     ft.Radio(value=str(acc_id), fill_color=theme.accent_primary) if is_selected else ft.Container(),
                 ]),
@@ -2258,8 +2305,10 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     # Expenses list
     expenses_list = ft.Column(spacing=8)
     
-    # Cache account names for efficiency
+    # Cache account names and currencies for efficiency
     account_cache = {}
+    currency_cache = {}
+    
     def get_account_name(acc_id):
         if acc_id is None:
             return None
@@ -2268,10 +2317,20 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
             account_cache[acc_id] = acc[1] if acc else None
         return account_cache[acc_id]
     
+    def get_account_currency(acc_id):
+        """Get the currency of the account used for this expense"""
+        if acc_id is None:
+            return "PHP"
+        if acc_id not in currency_cache:
+            acc = db.get_account_by_id(acc_id, state["user_id"])
+            currency_cache[acc_id] = acc[5] if acc else "PHP"
+        return currency_cache[acc_id]
+    
     for exp in expenses[:10]:
         eid, uid, amt, cat, dsc, dtt, acc_id = exp[:7]
         display_name = dsc if dsc else cat
         acc_name = get_account_name(acc_id)
+        expense_currency = get_account_currency(acc_id)
         try:
             dt = datetime.strptime(dtt, "%Y-%m-%d")
             date_str = dt.strftime("%d %b %Y")
@@ -2285,7 +2344,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 amount=-amt,
                 theme=theme,
                 account_name=acc_name,
-                user_currency=user_currency,
+                user_currency=expense_currency,
             )
         )
     
@@ -2405,7 +2464,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 controls=[
                     ft.Text("Total Balance", size=12, color=theme.text_secondary),
                     ft.Text(
-                        f"{user_currency} {total_balance:,.2f}",
+                        f"{total_balance:,.2f}",
                         size=28,
                         weight=ft.FontWeight.BOLD,
                         color=theme.text_primary,
@@ -2466,7 +2525,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                     ft.Column(
                         controls=[
                             ft.Text(
-                                f"{user_currency} {acc_balance:,.2f}",
+                                f"{currency} {acc_balance:,.2f}",
                                 size=14,
                                 weight=ft.FontWeight.W_600,
                                 color=theme.text_primary,
@@ -2625,6 +2684,14 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
             type_dropdown = ft.Dropdown(label="Type", value=acc_type, options=[ft.dropdown.Option(t) for t in account_types],
                 border_color=theme.border_primary, focused_border_color=theme.accent_primary, bgcolor=theme.bg_card,
                 color=theme.text_primary, label_style=ft.TextStyle(color=theme.text_secondary), border_radius=12)
+            currency_dropdown = ft.Dropdown(label="Currency", value=acc_currency if acc_currency else "PHP",
+                options=[ft.dropdown.Option(key="PHP", text="₱ PHP"), ft.dropdown.Option(key="USD", text="$ USD"),
+                    ft.dropdown.Option(key="EUR", text="€ EUR"), ft.dropdown.Option(key="JPY", text="¥ JPY"),
+                    ft.dropdown.Option(key="GBP", text="£ GBP"), ft.dropdown.Option(key="KRW", text="₩ KRW"),
+                    ft.dropdown.Option(key="SGD", text="S$ SGD"), ft.dropdown.Option(key="AUD", text="A$ AUD"),
+                    ft.dropdown.Option(key="CAD", text="C$ CAD"), ft.dropdown.Option(key="INR", text="₹ INR")],
+                border_color=theme.border_primary, focused_border_color=theme.accent_primary, bgcolor=theme.bg_card,
+                color=theme.text_primary, label_style=ft.TextStyle(color=theme.text_secondary), border_radius=12)
             
             def select_color(color):
                 selected_color["value"] = color
@@ -2644,10 +2711,11 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 except ValueError:
                     new_balance = acc_balance
                 new_type = type_dropdown.value
+                new_currency = currency_dropdown.value
                 new_color = selected_color["value"]
                 
                 db.update_account(acc_id, state["user_id"], name=new_name, account_type=new_type, 
-                                 balance=new_balance, color=new_color)
+                                 balance=new_balance, currency=new_currency, color=new_color)
                 page.close(edit_sheet)
                 page.close(settings_sheet)
                 toast(f"Account '{new_name}' updated!", "#10B981")
@@ -2674,7 +2742,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Container(height=16),
                         name_field, ft.Container(height=16), balance_field, ft.Container(height=16),
-                        type_dropdown, ft.Container(height=20),
+                        type_dropdown, ft.Container(height=16), currency_dropdown, ft.Container(height=20),
                         ft.Text("Account color", size=14, color=theme.text_secondary),
                         ft.Container(height=12), color_row, ft.Container(height=24),
                         ft.Row(controls=[
@@ -2697,6 +2765,8 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
         for acc in (all_accounts or []):
             acc_id, acc_name, acc_number, acc_type, acc_balance, acc_currency, acc_color = acc[:7]
             is_primary = acc[7] if len(acc) > 7 else 0
+            # Use account's own currency, fallback to user currency if NULL
+            display_currency = acc_currency if acc_currency else user_currency
             
             account_cards_list.append(ft.Container(
                 content=ft.Row(controls=[
@@ -2704,11 +2774,15 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                         bgcolor=f"{acc_color or theme.accent_primary}15", border_radius=10, padding=10),
                     ft.Container(width=12),
                     ft.Column(controls=[
-                        ft.Row(controls=[ft.Text(acc_name, size=14, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                        ft.Row(controls=[
+                            ft.Text(acc_name, size=14, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                            ft.Container(content=ft.Text(display_currency, size=10, weight=ft.FontWeight.W_600, color="white"),
+                                padding=ft.padding.symmetric(horizontal=8, vertical=3), bgcolor=theme.accent_primary,
+                                border_radius=6),
                             ft.Container(content=ft.Text("Primary", size=10, color=theme.accent_primary),
                                 bgcolor=f"{theme.accent_primary}20", padding=ft.padding.symmetric(horizontal=8, vertical=2),
                                 border_radius=4, visible=is_primary == 1)], spacing=8),
-                        ft.Text(f"{user_currency} {acc_balance:,.2f}", size=12, color=theme.text_secondary),
+                        ft.Text(f"{acc_balance:,.2f}", size=12, color=theme.text_secondary),
                     ], spacing=2, expand=True),
                     ft.Icon(ft.Icons.EDIT_OUTLINED, color=theme.text_muted, size=20),
                 ]),
@@ -2816,14 +2890,19 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     rows = db.select_expenses_by_user(state["user_id"])
     
     # Cache account names for efficiency
+    # Cache account info (name and currency) for efficiency  
     account_cache = {}
-    def get_account_name(acc_id):
+    def get_account_info(acc_id):
         if acc_id is None:
-            return None
+            return None, user_currency
         if acc_id not in account_cache:
             acc = db.get_account_by_id(acc_id, state["user_id"])
-            account_cache[acc_id] = acc[1] if acc else None
-        return account_cache[acc_id]
+            if acc:
+                # acc structure: id, name, account_number, type, balance, currency, color, is_primary, created_at
+                account_cache[acc_id] = {"name": acc[1], "currency": acc[5]}
+            else:
+                account_cache[acc_id] = {"name": None, "currency": user_currency}
+        return account_cache[acc_id]["name"], account_cache[acc_id]["currency"]
     
     def format_date(date_str):
         try:
@@ -2835,7 +2914,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     for r in rows:
         eid, uid, amt, cat, dsc, dtt, acc_id = r[:7]
         display_name = dsc if dsc else cat
-        acc_name = get_account_name(acc_id)
+        acc_name, acc_currency = get_account_info(acc_id)
         expenses_list.controls.append(
             create_expense_item(
                 brand_text=display_name,
@@ -2843,7 +2922,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 amount=-amt,
                 theme=theme,
                 account_name=acc_name,
-                user_currency=user_currency,
+                user_currency=acc_currency,  # Use account currency
             )
         )
     

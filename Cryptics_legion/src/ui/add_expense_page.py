@@ -4,6 +4,7 @@ from datetime import datetime
 from core import db
 from core.theme import get_theme
 from utils.brand_recognition import identify_brand, get_brand_suggestions
+from utils.currency import get_currency_symbol
 
 
 # Category options
@@ -106,12 +107,14 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
         selected_account = db.get_selected_account(state["user_id"])
         account_id = selected_account[0] if selected_account else None
         account_name = selected_account[1] if selected_account else "Unknown"
+        account_currency = selected_account[5] if selected_account else "PHP"
+        currency_symbol = get_currency_symbol(account_currency)
         
         # Check if account has enough balance
         if selected_account:
             account_balance = selected_account[4]  # balance column
             if amount > account_balance:
-                toast(f"Insufficient balance in {account_name} (₱{account_balance:,.2f})", "#b71c1c")
+                toast(f"Insufficient balance in {account_name} ({currency_symbol}{account_balance:,.2f})", "#b71c1c")
                 return
         
         # Get the proper category and description
@@ -130,7 +133,7 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
             account_id
         )
         
-        toast(f"Expense added! Deducted ₱{amount:,.2f} from {account_name}", "#2E7D32")
+        toast(f"Expense added! Deducted {currency_symbol}{amount:,.2f} from {account_name}", "#2E7D32")
         nav_back()
     
     def show_view():
@@ -510,8 +513,48 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
         selected_account = db.get_selected_account(state["user_id"])
         account_name = selected_account[1] if selected_account else "No Account"
         account_balance = selected_account[4] if selected_account else 0
+        account_currency = selected_account[5] if selected_account else "PHP"
         account_color = selected_account[6] if selected_account else "#3B82F6"
         account_type = selected_account[3] if selected_account else "Cash"
+        
+        # State for selected currency (initialize with account's currency)
+        selected_currency_code = {"value": account_currency}
+        currency_symbol = get_currency_symbol(selected_currency_code["value"])
+        
+        def update_currency_display(e):
+            """Update currency symbol when dropdown changes"""
+            selected_currency_code["value"] = e.control.value
+            currency_symbol_text.value = get_currency_symbol(e.control.value)
+            page.update()
+        
+        # Currency symbol text (will be updated dynamically)
+        currency_symbol_text = ft.Text(currency_symbol, size=18, color=theme.text_primary, weight=ft.FontWeight.W_500)
+        
+        # Currency dropdown
+        currency_dropdown = ft.Dropdown(
+            value=account_currency,
+            options=[
+                ft.dropdown.Option(key="PHP", text="₱ PHP"),
+                ft.dropdown.Option(key="USD", text="$ USD"),
+                ft.dropdown.Option(key="EUR", text="€ EUR"),
+                ft.dropdown.Option(key="JPY", text="¥ JPY"),
+                ft.dropdown.Option(key="GBP", text="£ GBP"),
+                ft.dropdown.Option(key="KRW", text="₩ KRW"),
+                ft.dropdown.Option(key="SGD", text="S$ SGD"),
+                ft.dropdown.Option(key="AUD", text="A$ AUD"),
+                ft.dropdown.Option(key="CAD", text="C$ CAD"),
+                ft.dropdown.Option(key="INR", text="₹ INR"),
+            ],
+            on_change=update_currency_display,
+            border_color=theme.border_primary,
+            focused_border_color=theme.accent_primary,
+            bgcolor="transparent",
+            color=theme.text_primary,
+            text_size=14,
+            height=40,
+            content_padding=ft.padding.only(left=8, right=4),
+            border_radius=8,
+        )
         
         # Account card - shows which account will be charged
         account_card = ft.Container(
@@ -540,7 +583,7 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
                     ft.Column(
                         controls=[
                             ft.Text("Balance", size=10, color=theme.text_muted),
-                            ft.Text(f"₱{account_balance:,.2f}", size=14, color="#10B981", weight=ft.FontWeight.W_600),
+                            ft.Text(f"{currency_symbol}{account_balance:,.2f}", size=14, color="#10B981", weight=ft.FontWeight.W_600),
                         ],
                         spacing=2,
                         horizontal_alignment=ft.CrossAxisAlignment.END,
@@ -587,12 +630,11 @@ def create_add_expense_view(page: ft.Page, state: dict, toast, go_back,
                         controls=[
                             ft.Row(
                                 controls=[
-                                    ft.Text("₱", size=18, color=theme.text_primary, weight=ft.FontWeight.W_500),
+                                    currency_dropdown,
                                     amount_field,
                                 ],
-                                spacing=4,
+                                spacing=8,
                             ),
-                            ft.Icon(ft.Icons.EDIT, color=theme.text_muted, size=20),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
@@ -783,6 +825,7 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         "selected_date": now,
         "selected_time": now,
         "selected_account_id": None,
+        "selected_currency_code": "PHP",
     }
     
     # Get user accounts
@@ -790,8 +833,10 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
     selected_account = db.get_selected_account(state["user_id"])
     if selected_account:
         expense_state["selected_account_id"] = selected_account[0]
+        expense_state["selected_currency_code"] = selected_account[5] if len(selected_account) > 5 else "PHP"
     elif user_accounts:
         expense_state["selected_account_id"] = user_accounts[0][0]
+        expense_state["selected_currency_code"] = user_accounts[0][5] if len(user_accounts[0]) > 5 else "PHP"
     
     # ============ UI Components ============
     
@@ -857,13 +902,15 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         return None
     
     current_acc = get_account_info(expense_state["selected_account_id"])
+    current_acc_currency = current_acc[5] if current_acc else "PHP"
+    current_acc_symbol = get_currency_symbol(current_acc_currency)
     account_name_text = ft.Text(
         current_acc[1] if current_acc else "Select",
         size=13,
         color=theme.text_primary,
     )
     account_balance_text = ft.Text(
-        f"₱{current_acc[4]:,.0f}" if current_acc else "",
+        f"{current_acc_symbol}{current_acc[4]:,.0f}" if current_acc else "",
         size=10,
         color=theme.text_muted,
     )
@@ -874,6 +921,14 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         border_radius=8,
         bgcolor=current_acc[6] if current_acc else theme.accent_primary,
         alignment=ft.alignment.center,
+    )
+    
+    # Currency display
+    currency_symbol_display = get_currency_symbol(expense_state["selected_currency_code"])
+    currency_display_text = ft.Text(
+        f"{currency_symbol_display} {expense_state['selected_currency_code']}",
+        size=13,
+        color=theme.text_primary,
     )
     
     # ============ AI Category Detection ============
@@ -1036,7 +1091,9 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         def select_acc(acc):
             expense_state["selected_account_id"] = acc[0]
             account_name_text.value = acc[1]
-            account_balance_text.value = f"₱{acc[4]:,.0f}"
+            acc_currency = acc[5] if len(acc) > 5 else "PHP"
+            acc_symbol = get_currency_symbol(acc_currency)
+            account_balance_text.value = f"{acc_symbol}{acc[4]:,.0f}"
             account_icon_container.bgcolor = acc[6] or theme.accent_primary
             page.close(sheet)
             page.update()
@@ -1064,7 +1121,7 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
                                 ft.Container(width=10),
                                 ft.Column([
                                     ft.Text(acc[1], size=13, weight=ft.FontWeight.W_600, color=theme.text_primary),
-                                    ft.Text(f"₱{acc[4]:,.2f} • {acc[3]}", size=11, color=theme.text_muted),
+                                    ft.Text(f"{get_currency_symbol(acc[5])}{acc[4]:,.2f} • {acc[3]}", size=11, color=theme.text_muted),
                                 ], spacing=2, expand=True),
                                 ft.Icon(ft.Icons.CHECK_CIRCLE, color=theme.accent_primary, size=18)
                                 if acc[0] == expense_state["selected_account_id"] else ft.Container(),
@@ -1076,6 +1133,70 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
                             ink=True,
                         ) for acc in user_accounts
                     ], scroll=ft.ScrollMode.AUTO, spacing=6),
+                    ft.Container(height=20),
+                ]),
+                bgcolor=theme.bg_secondary,
+                padding=ft.padding.symmetric(horizontal=16),
+                border_radius=ft.border_radius.only(top_left=20, top_right=20),
+            ),
+            bgcolor=theme.bg_secondary,
+        )
+        page.open(sheet)
+    
+    # ============ Currency Picker ============
+    def show_currency_picker(e):
+        def select_currency(code, symbol, name):
+            expense_state["selected_currency_code"] = code
+            currency_display_text.value = f"{symbol} {code}"
+            page.close(sheet)
+            page.update()
+        
+        currencies = [
+            ("PHP", "₱", "Philippine Peso"),
+            ("USD", "$", "US Dollar"),
+            ("EUR", "€", "Euro"),
+            ("JPY", "¥", "Japanese Yen"),
+            ("GBP", "£", "British Pound"),
+            ("KRW", "₩", "South Korean Won"),
+            ("SGD", "S$", "Singapore Dollar"),
+            ("AUD", "A$", "Australian Dollar"),
+            ("CAD", "C$", "Canadian Dollar"),
+            ("INR", "₹", "Indian Rupee"),
+        ]
+        
+        sheet = ft.BottomSheet(
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Container(
+                        content=ft.Container(width=40, height=4, bgcolor=theme.text_muted, border_radius=2),
+                        alignment=ft.alignment.center,
+                        padding=ft.padding.only(top=12, bottom=12),
+                    ),
+                    ft.Text("Select Currency", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ft.Container(height=12),
+                    ft.Column([
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Container(
+                                    content=ft.Text(symbol, size=16, color="white", weight=ft.FontWeight.BOLD),
+                                    width=36, height=36, border_radius=10,
+                                    bgcolor=theme.accent_primary, alignment=ft.alignment.center,
+                                ),
+                                ft.Container(width=10),
+                                ft.Column([
+                                    ft.Text(name, size=13, color=theme.text_primary),
+                                    ft.Text(code, size=11, color=theme.text_muted),
+                                ], spacing=1, expand=True),
+                                ft.Icon(ft.Icons.CHECK_CIRCLE, color=theme.accent_primary, size=18)
+                                if code == expense_state["selected_currency_code"] else ft.Container(),
+                            ]),
+                            padding=10,
+                            border_radius=10,
+                            bgcolor=f"{theme.accent_primary}15" if code == expense_state["selected_currency_code"] else "transparent",
+                            on_click=lambda e, c=code, s=symbol, n=name: select_currency(c, s, n),
+                            ink=True,
+                        ) for code, symbol, name in currencies
+                    ], scroll=ft.ScrollMode.AUTO, spacing=4),
                     ft.Container(height=20),
                 ]),
                 bgcolor=theme.bg_secondary,
@@ -1129,7 +1250,9 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         )
         
         acc_name = acc_info[1] if acc_info else "account"
-        toast(f"₱{amount:,.2f} deducted from {acc_name}", "#10B981")
+        acc_currency = acc_info[5] if acc_info else "PHP"
+        acc_symbol = get_currency_symbol(acc_currency)
+        toast(f"{acc_symbol}{amount:,.2f} deducted from {acc_name}", "#10B981")
         
         if show_expenses:
             show_expenses()
@@ -1157,7 +1280,7 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
             ft.Text("AMOUNT", size=10, color=theme.text_muted, weight=ft.FontWeight.W_600),
             ft.Container(height=6),
             ft.Row([
-                ft.Text("₱", size=28, color=theme.accent_primary, weight=ft.FontWeight.BOLD),
+                ft.Text(current_acc_symbol, size=28, color=theme.accent_primary, weight=ft.FontWeight.BOLD),
                 amount_field,
             ], alignment=ft.MainAxisAlignment.CENTER),
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
@@ -1288,6 +1411,32 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         border=ft.border.all(1, theme.border_primary),
     )
     
+    # Currency Selector Card
+    currency_card = ft.Container(
+        content=ft.Row([
+            ft.Container(
+                content=ft.Icon(ft.Icons.ATTACH_MONEY, color="white", size=16),
+                width=32,
+                height=32,
+                border_radius=8,
+                bgcolor=theme.accent_primary,
+                alignment=ft.alignment.center,
+            ),
+            ft.Container(width=10),
+            ft.Column([
+                ft.Text("Currency", size=10, color=theme.text_muted),
+                currency_display_text,
+            ], spacing=1, expand=True),
+            ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, color=theme.text_muted, size=22),
+        ]),
+        bgcolor=theme.bg_card,
+        border_radius=14,
+        padding=14,
+        border=ft.border.all(1, theme.border_primary),
+        on_click=show_currency_picker,
+        ink=True,
+    )
+    
     # Save Button
     save_button = ft.Container(
         content=ft.Row([
@@ -1309,6 +1458,8 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         description_card,
         ft.Container(height=10),
         category_card,
+        ft.Container(height=10),
+        currency_card,
         ft.Container(height=10),
         date_time_row,
         ft.Container(height=10),

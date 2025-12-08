@@ -4,7 +4,7 @@ from datetime import datetime
 from core import db
 from core.theme import get_theme
 from utils.brand_recognition import identify_brand, get_icon_for_category
-from utils.currency import format_currency, get_currency_from_user_profile
+from utils.currency import format_currency, get_currency_from_user_profile, get_currency_symbol
 
 
 def get_category_icon(category: str):
@@ -44,15 +44,19 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
         expenses_list.controls.clear()
         rows = db.select_expenses_by_user(state["user_id"])
         
-        # Cache account names for efficiency
+        # Cache full account info for efficiency
         account_cache = {}
-        def get_account_name(acc_id):
+        def get_account_info(acc_id):
             if acc_id is None:
-                return None
+                return None, user_currency  # Return None for name, user's currency as default
             if acc_id not in account_cache:
                 acc = db.get_account_by_id(acc_id, state["user_id"])
-                account_cache[acc_id] = acc[1] if acc else None
-            return account_cache[acc_id]
+                if acc:
+                    # acc structure: id, name, account_number, type, balance, currency, color, is_primary, created_at
+                    account_cache[acc_id] = {"name": acc[1], "currency": acc[5]}
+                else:
+                    account_cache[acc_id] = {"name": None, "currency": user_currency}
+            return account_cache[acc_id]["name"], account_cache[acc_id]["currency"]
         
         if not rows:
             expenses_list.controls.append(
@@ -73,15 +77,17 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
             for r in rows:
                 # Unpack with account_id (position 6)
                 eid, uid, amt, cat, dsc, dtt, acc_id = r[:7]
-                acc_name = get_account_name(acc_id)
+                acc_name, acc_currency = get_account_info(acc_id)
                 expenses_list.controls.append(
-                    create_expense_card(eid, amt, cat, dsc, dtt, acc_name)
+                    create_expense_card(eid, amt, cat, dsc, dtt, acc_name, acc_currency)
                 )
         
         page.update()
     
-    def create_expense_card(eid, amount, category, description, date, account_name=None):
+    def create_expense_card(eid, amount, category, description, date, account_name=None, account_currency=None):
         """Create an expense card with edit/delete options."""
+        # Use account currency if available, otherwise fall back to user currency
+        display_currency = account_currency if account_currency else user_currency
         
         def show_edit_dialog(e):
             edit_expense(eid, amount, category, description, date)
@@ -149,8 +155,8 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
                         spacing=2,
                         expand=True,
                     ),
-                    # Amount
-                    ft.Text(f"-{format_currency(amount, user_currency)}", size=14, weight=ft.FontWeight.W_600, color="#EF4444"),
+                    # Amount - use account currency instead of user currency
+                    ft.Text(format_currency(-amount, display_currency), size=14, weight=ft.FontWeight.W_600, color="#EF4444"),
                     # Actions
                     ft.PopupMenuButton(
                         icon=ft.Icons.MORE_VERT,
@@ -353,8 +359,10 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
         )
         page.open(confirm_dialog)
     
-    # Cache account names for efficiency
+    # Cache account names and currencies for efficiency
     account_cache = {}
+    currency_cache = {}
+    
     def get_account_name(acc_id):
         if acc_id is None:
             return None
@@ -362,6 +370,15 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
             acc = db.get_account_by_id(acc_id, state["user_id"])
             account_cache[acc_id] = acc[1] if acc else None
         return account_cache[acc_id]
+    
+    def get_account_currency(acc_id):
+        """Get the currency of the account used for this expense"""
+        if acc_id is None:
+            return "PHP"
+        if acc_id not in currency_cache:
+            acc = db.get_account_by_id(acc_id, state["user_id"])
+            currency_cache[acc_id] = acc[5] if acc else "PHP"
+        return currency_cache[acc_id]
     
     def create_expense_card(expense):
         """Create an expense card with swipe to delete."""
@@ -372,6 +389,10 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
         display_name = description if description else category
         formatted_date = format_date(date_str)
         account_name = get_account_name(acc_id)
+        
+        # Get currency from the expense's original account
+        expense_currency = get_account_currency(acc_id)
+        currency_symbol = get_currency_symbol(expense_currency)
         
         # Build subtitle text
         subtitle = f"{category} • {formatted_date}"
@@ -403,7 +424,7 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
                 # Amount and Account - right side (fixed width)
                 ft.Column([
                     ft.Text(
-                        f"-₱{amount:,.2f}",
+                        f"-{currency_symbol}{amount:,.2f}",
                         size=14,
                         weight=ft.FontWeight.BOLD,
                         color="#EF4444",

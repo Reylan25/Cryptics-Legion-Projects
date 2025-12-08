@@ -23,6 +23,8 @@ from ui.profile_page import build_profile_content
 from ui.account_settings_page import build_account_settings_content
 from ui.add_expense_page import build_add_expense_content
 from ui.all_expenses_page import build_all_expenses_content
+from ui.exchange_rates_page import build_exchange_rates_content
+from ui.passcode_lock_page import create_passcode_setup, create_passcode_verify
 from utils.statistics import create_charts_view
 
 
@@ -119,7 +121,7 @@ def main(page: ft.Page):
     
     def show_personal_details():
         navigate_to("personal_details", lambda: build_personal_details_content(
-            page, state, toast, show_currency_selection, show_register
+            page, state, toast, show_passcode_setup, show_register
         ))
     
     def show_currency_selection():
@@ -150,6 +152,11 @@ def main(page: ft.Page):
             show_profile, show_add_expense
         ))
     
+    def show_exchange_rates():
+        navigate_to("exchange_rates", lambda: build_exchange_rates_content(
+            page, state, toast, show_statistics
+        ))
+    
     def show_profile():
         navigate_to("profile", lambda: build_profile_content(
             page, state, toast, show_home, do_logout, 
@@ -171,20 +178,53 @@ def main(page: ft.Page):
         navigate_to("all_expenses", lambda: build_all_expenses_content(
             page, state, toast, show_home, show_all_expenses
         ))
+    
+    def show_passcode_setup():
+        """Show passcode setup screen (after signup)."""
+        navigate_to("passcode_setup", lambda: create_passcode_setup(
+            page, state, on_passcode_setup_complete
+        ))
+    
+    def show_passcode_verify():
+        """Show passcode verification screen (after login)."""
+        navigate_to("passcode_verify", lambda: create_passcode_verify(
+            page, state, on_passcode_verify_success, show_forgot_password
+        ))
 
     # ============ AUTH CALLBACKS ============
     def on_login_success(user_id: int):
-        """Handle successful login."""
+        """Handle successful login - check if passcode is set."""
         state["user_id"] = user_id
-        if db.has_user_seen_onboarding(user_id):
-            show_home()
+        
+        # Check if user has a passcode set up
+        if db.has_passcode(user_id):
+            # Show passcode verification before entering app
+            show_passcode_verify()
         else:
-            show_onboarding()
+            # No passcode set up, proceed normally
+            if db.has_user_seen_onboarding(user_id):
+                show_home()
+            else:
+                show_onboarding()
+    
+    def on_passcode_verify_success():
+        """Handle successful passcode verification."""
+        user_id = state.get("user_id")
+        if user_id:
+            if db.has_user_seen_onboarding(user_id):
+                show_home()
+            else:
+                show_onboarding()
     
     def on_register_success(password: str):
-        """Handle successful registration."""
+        """Handle successful registration - proceed to personal details, then passcode setup."""
         state["temp_password"] = password
         show_personal_details()
+    
+    def on_passcode_setup_complete():
+        """Handle completion of passcode setup after registration."""
+        # After passcode is set up, continue to currency selection
+        show_currency_selection()
     
     def do_logout():
         """Handle logout."""

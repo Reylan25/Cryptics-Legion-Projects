@@ -61,6 +61,18 @@ def connect_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Migration: Add passcode column to users table
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN passcode TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    
+    # Migration: Add biometric_enabled column to users table
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN biometric_enabled INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # expenses table (linked to users)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS expenses (
@@ -226,11 +238,11 @@ def get_user_profile(user_id: int) -> dict:
         return {
             "id": row[0],
             "username": row[1],
-            "full_name": row[2] or "",
-            "first_name": row[3] or "",
-            "last_name": row[4] or "",
-            "email": row[5] or "",
-            "phone": row[6] or "",
+            "full_name": (row[2] or "").strip(),
+            "first_name": (row[3] or "").strip(),
+            "last_name": (row[4] or "").strip(),
+            "email": (row[5] or "").strip(),
+            "phone": (row[6] or "").strip(),
             "currency": row[7] or "PHP",
             "timezone": row[8] or "Asia/Manila",
             "first_day_of_week": row[9] or "Monday",
@@ -262,11 +274,11 @@ def save_personal_details(user_id: int, details: dict) -> bool:
                 photo = ?
             WHERE id = ?
         """, (
-            details.get("full_name", ""),
-            details.get("first_name", ""),
-            details.get("last_name", ""),
-            details.get("email", ""),
-            details.get("phone", ""),
+            (details.get("full_name", "") or "").strip(),
+            (details.get("first_name", "") or "").strip(),
+            (details.get("last_name", "") or "").strip(),
+            (details.get("email", "") or "").strip(),
+            (details.get("phone", "") or "").strip(),
             details.get("currency", "PHP"),
             details.get("timezone", "Asia/Manila"),
             details.get("first_day", "Monday"),
@@ -771,6 +783,72 @@ def update_password(user_id: int, new_password_blob: bytes) -> bool:
         return cur.rowcount > 0
     except Exception as e:
         print(f"Error updating password: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def save_user_passcode(user_id: int, passcode_hash: str) -> bool:
+    """Save hashed passcode for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET passcode = ? WHERE id = ?", (passcode_hash, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print(f"Error saving passcode: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_passcode(user_id: int) -> str:
+    """Get stored passcode hash for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT passcode FROM users WHERE id = ?", (user_id,))
+        row = cur.fetchone()
+        return row[0] if row and row[0] else None
+    except Exception as e:
+        print(f"Error getting passcode: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def has_passcode(user_id: int) -> bool:
+    """Check if user has set up a passcode."""
+    passcode = get_user_passcode(user_id)
+    return passcode is not None and passcode != ""
+
+
+def set_biometric_enabled(user_id: int, enabled: bool = True) -> bool:
+    """Enable or disable biometric authentication for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE users SET biometric_enabled = ? WHERE id = ?", (1 if enabled else 0, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print(f"Error setting biometric preference: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def is_biometric_enabled(user_id: int) -> bool:
+    """Check if user has biometric authentication enabled."""
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT biometric_enabled FROM users WHERE id = ?", (user_id,))
+        row = cur.fetchone()
+        return bool(row[0]) if row and row[0] is not None else False
+    except Exception as e:
+        print(f"Error checking biometric preference: {e}")
         return False
     finally:
         conn.close()

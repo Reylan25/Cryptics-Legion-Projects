@@ -209,29 +209,43 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         if show_add_expense:
             show_add_expense()
     
-    def get_period_data(period: str):
-        """Get expense data for the selected time period."""
+    def get_period_data(period: str, previous: bool = False):
+        """Get expense data for the selected time period.
+        
+        Args:
+            period: Time period string (\"1D\", \"1W\", \"1M\", \"3M\", \"1Y\")
+            previous: If True, get data for the previous period instead
+        """
         expenses = db.select_expenses_by_user(state["user_id"])
         today = datetime.now()
         
         if period == "1D":
-            start_date = today - timedelta(days=1)
+            delta = timedelta(days=1)
         elif period == "1W":
-            start_date = today - timedelta(weeks=1)
+            delta = timedelta(weeks=1)
         elif period == "1M":
-            start_date = today - timedelta(days=30)
+            delta = timedelta(days=30)
         elif period == "3M":
-            start_date = today - timedelta(days=90)
+            delta = timedelta(days=90)
         elif period == "1Y":
-            start_date = today - timedelta(days=365)
+            delta = timedelta(days=365)
         else:
-            start_date = today - timedelta(weeks=1)
+            delta = timedelta(weeks=1)
+        
+        if previous:
+            # Get previous period
+            end_date = today - delta
+            start_date = end_date - delta
+        else:
+            # Get current period
+            start_date = today - delta
+            end_date = today
         
         filtered = []
         for exp in expenses:
             try:
                 exp_date = datetime.strptime(exp[5], "%Y-%m-%d")
-                if exp_date >= start_date:
+                if start_date <= exp_date <= end_date:
                     filtered.append(exp)
             except:
                 pass
@@ -452,6 +466,10 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         # Get current theme
         theme = get_theme()
         
+        # Get user currency for this view
+        user_profile = db.get_user_profile(state["user_id"])
+        user_currency = get_currency_from_user_profile(user_profile)
+        
         # Get expense data for selected period
         expenses, total_spent = get_period_data(selected_period["value"])
         
@@ -489,17 +507,54 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
         
+        # Get previous period data for comparison
+        prev_expenses, prev_total = get_period_data(selected_period["value"], previous=True)
+        change_amount = total_spent - prev_total
+        change_percent = ((total_spent - prev_total) / prev_total * 100) if prev_total > 0 else 0
+        is_increase = change_amount > 0
+        
         # Spending summary card
         spending_card = ft.Container(
             content=ft.Column(
                 controls=[
-                    ft.Column(
-                        controls=[
-                            ft.Text(f"{selected_period['value']} Spending", size=12, color=theme.text_secondary),
-                            ft.Text(format_currency(total_spent, user_currency), size=24, weight=ft.FontWeight.BOLD, color=theme.text_primary),
-                        ],
-                        spacing=2,
-                    ),
+                    ft.Row([
+                        ft.Column(
+                            controls=[
+                                ft.Text(f"{selected_period['value']} Spending", size=12, color=theme.text_secondary),
+                                ft.Text(format_currency(total_spent, user_currency), size=28, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                                # Comparison badge
+                                ft.Container(
+                                    content=ft.Row([
+                                        ft.Icon(
+                                            ft.Icons.ARROW_UPWARD if is_increase else ft.Icons.ARROW_DOWNWARD,
+                                            color="#EF4444" if is_increase else "#10B981",
+                                            size=14,
+                                        ),
+                                        ft.Text(
+                                            f"{abs(change_percent):.1f}% vs prev",
+                                            size=11,
+                                            color="#EF4444" if is_increase else "#10B981",
+                                            weight=ft.FontWeight.W_500,
+                                        ),
+                                    ], spacing=4, tight=True),
+                                    padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                                    bgcolor="#EF444420" if is_increase else "#10B98120",
+                                    border_radius=6,
+                                    visible=prev_total > 0,
+                                ),
+                            ],
+                            spacing=4,
+                            expand=True,
+                        ),
+                        ft.Container(
+                            content=ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color=theme.accent_primary, size=32),
+                            width=56,
+                            height=56,
+                            border_radius=12,
+                            bgcolor=f"{theme.accent_primary}20",
+                            alignment=ft.alignment.center,
+                        ),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Container(height=6),
                     period_buttons,
                     ft.Container(height=10),
@@ -512,6 +567,136 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
             bgcolor=theme.bg_card,
             border=ft.border.all(1, theme.border_primary),
         )
+        
+        # Category breakdown section
+        category_summary = get_expense_summary_by_period(state["user_id"], selected_period["value"])
+        total_spending = sum(cat[1] for cat in category_summary) if category_summary else 0
+        
+        def create_category_card(category, amount, total, theme):
+            """Create a category card with progress bar."""
+            percentage = (amount / total * 100) if total > 0 else 0
+            color = get_category_color(category)
+            
+            return ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Container(
+                            content=ft.Icon(ft.Icons.CATEGORY, color=color, size=18),
+                            width=36,
+                            height=36,
+                            border_radius=8,
+                            bgcolor=f"{color}20",
+                            alignment=ft.alignment.center,
+                        ),
+                        ft.Column([
+                            ft.Text(category.title(), size=14, weight=ft.FontWeight.W_500, color=theme.text_primary),
+                            ft.Text(format_currency(amount, user_currency), size=13, color=theme.text_secondary),
+                        ], spacing=2, expand=True),
+                        ft.Text(f"{percentage:.1f}%", size=14, weight=ft.FontWeight.W_600, color=color),
+                    ], spacing=12),
+                    ft.Container(height=8),
+                    ft.Container(
+                        content=ft.Container(
+                            width=f"{percentage}%",
+                            height=4,
+                            bgcolor=color,
+                            border_radius=2,
+                        ),
+                        height=4,
+                        bgcolor=f"{color}15",
+                        border_radius=2,
+                    ),
+                ], spacing=0),
+                padding=12,
+                border_radius=10,
+                bgcolor=theme.bg_field if theme.is_dark else theme.bg_secondary,
+                border=ft.border.all(1, theme.border_primary),
+            )
+        
+        category_cards = ft.Column(spacing=8)
+        for cat, amt in category_summary[:5]:  # Top 5 categories
+            category_cards.controls.append(create_category_card(cat, amt, total_spending, theme))
+        
+        if not category_summary:
+            category_cards.controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Icon(ft.Icons.PIE_CHART, color=theme.text_hint, size=36),
+                        ft.Text("No spending data", color=theme.text_muted, size=12),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                    padding=20,
+                    alignment=ft.alignment.center,
+                )
+            )
+        
+        categories_section = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Text("Top Categories", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                    ft.Icon(ft.Icons.TRENDING_DOWN, color=theme.accent_primary, size=20),
+                ], spacing=8),
+                ft.Container(height=12),
+                category_cards,
+            ]),
+            padding=16,
+            border_radius=12,
+            bgcolor=theme.bg_card,
+            border=ft.border.all(1, theme.border_primary),
+        )
+        
+        # Spending insights cards
+        avg_daily = get_average_daily_spending(state["user_id"], 30)
+        stats_summary = get_statistics_summary(state["user_id"])
+        
+        def create_insight_card(icon, title, value, subtitle, color, theme):
+            return ft.Container(
+                content=ft.Column([
+                    ft.Container(
+                        content=ft.Icon(icon, color=color, size=20),
+                        width=40,
+                        height=40,
+                        border_radius=10,
+                        bgcolor=f"{color}20",
+                        alignment=ft.alignment.center,
+                    ),
+                    ft.Container(height=8),
+                    ft.Text(title, size=11, color=theme.text_secondary),
+                    ft.Text(value, size=16, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ft.Text(subtitle, size=10, color=theme.text_muted),
+                ], horizontal_alignment=ft.CrossAxisAlignment.START, spacing=2),
+                padding=14,
+                border_radius=12,
+                bgcolor=theme.bg_field if theme.is_dark else theme.bg_secondary,
+                border=ft.border.all(1, theme.border_primary),
+                expand=True,
+            )
+        
+        insights_row = ft.Row([
+            create_insight_card(
+                ft.Icons.TRENDING_UP,
+                "Daily Average",
+                format_currency(avg_daily, user_currency),
+                "Last 30 days",
+                "#3B82F6",
+                theme
+            ),
+            create_insight_card(
+                ft.Icons.RECEIPT_LONG,
+                "Transactions",
+                str(stats_summary.get('total_transactions', 0)),
+                "This period",
+                "#10B981",
+                theme
+            ),
+            create_insight_card(
+                ft.Icons.CATEGORY,
+                "Categories",
+                str(len(category_summary)),
+                "Active",
+                "#F59E0B",
+                theme
+            ),
+        ], spacing=12)
         
         # Recent transactions header
         transactions_header = ft.Row(
@@ -528,20 +713,24 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         # Recent transactions list
         transactions_list = ft.Column(spacing=8)
         
-        # Cache account names for efficiency
+        # Cache account info (name and currency) for efficiency
         account_cache = {}
-        def get_account_name(acc_id):
+        def get_account_info(acc_id):
             if acc_id is None:
-                return None
+                return None, user_currency
             if acc_id not in account_cache:
                 acc = db.get_account_by_id(acc_id, state["user_id"])
-                account_cache[acc_id] = acc[1] if acc else None
-            return account_cache[acc_id]
+                if acc:
+                    # acc structure: id, name, account_number, type, balance, currency, color, is_primary, created_at
+                    account_cache[acc_id] = {"name": acc[1], "currency": acc[5]}
+                else:
+                    account_cache[acc_id] = {"name": None, "currency": user_currency}
+            return account_cache[acc_id]["name"], account_cache[acc_id]["currency"]
         
         for exp in expenses[:5]:  # Show last 5
             # Unpack with account_id (position 6)
             eid, uid, amount, category, description, date_str, acc_id = exp[:7]
-            acc_name = get_account_name(acc_id)
+            acc_name, acc_currency = get_account_info(acc_id)
             transactions_list.controls.append(
                 _transaction_item(
                     category=category,
@@ -551,7 +740,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
                     on_click=lambda e, ex=exp, t=theme: show_transaction_detail(ex, t),
                     theme=theme,
                     account_name=acc_name,
-                    user_currency=user_currency,
+                    user_currency=acc_currency,  # Use account currency
                 )
             )
         
@@ -575,6 +764,10 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
         scrollable_content = ft.Column(
             controls=[
                 spending_card,
+                ft.Container(height=16),
+                insights_row,
+                ft.Container(height=16),
+                categories_section,
                 ft.Container(height=24),
                 transactions_header,
                 ft.Container(height=12),
@@ -644,6 +837,16 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     # Create avatar
     user_avatar = create_user_avatar(user_id, radius=22, theme=theme)
     
+    # Exchange rates navigation function
+    def show_exchange_rates():
+        """Navigate to exchange rates page."""
+        try:
+            from ui.exchange_rates_page import build_exchange_rates_content
+            page.controls.clear()
+            build_exchange_rates_content(page, state, toast, go_back)
+        except ImportError as e:
+            toast(f"Exchange rates feature not available: {e}", "#EF4444")
+    
     # Header
     header = ft.Container(
         content=ft.Row(
@@ -657,6 +860,13 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
                 ),
                 ft.Row(
                     controls=[
+                        ft.IconButton(
+                            icon=ft.Icons.CURRENCY_EXCHANGE,
+                            icon_color=theme.accent_primary,
+                            icon_size=22,
+                            tooltip="Exchange Rates",
+                            on_click=lambda e: show_exchange_rates(),
+                        ),
                         ft.IconButton(
                             icon=ft.Icons.NOTIFICATIONS_NONE_ROUNDED,
                             icon_color=theme.text_primary,
@@ -976,19 +1186,23 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     
     transactions_list = ft.Column(spacing=8)
     
-    # Cache account names
+    # Cache account info (name and currency)
     account_cache = {}
-    def get_account_name(acc_id):
+    def get_account_info(acc_id):
         if acc_id is None:
-            return None
+            return None, user_currency
         if acc_id not in account_cache:
             acc = db.get_account_by_id(acc_id, user_id)
-            account_cache[acc_id] = acc[1] if acc else None
-        return account_cache[acc_id]
+            if acc:
+                # acc structure: id, name, account_number, type, balance, currency, color, is_primary, created_at
+                account_cache[acc_id] = {"name": acc[1], "currency": acc[5]}
+            else:
+                account_cache[acc_id] = {"name": None, "currency": user_currency}
+        return account_cache[acc_id]["name"], account_cache[acc_id]["currency"]
     
     for exp in all_expenses[:5]:
         eid, uid, amount, category, description, date_str, acc_id = exp[:7]
-        acc_name = get_account_name(acc_id)
+        acc_name, acc_currency = get_account_info(acc_id)
         transactions_list.controls.append(
             _transaction_item(
                 category=category,
@@ -997,7 +1211,7 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
                 date=_format_date(date_str),
                 theme=theme,
                 account_name=acc_name,
-                user_currency=user_currency,
+                user_currency=acc_currency,  # Use account currency
             )
         )
     
