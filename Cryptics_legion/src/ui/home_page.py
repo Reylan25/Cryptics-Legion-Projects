@@ -5,7 +5,7 @@ from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
 from utils.currency import format_currency, format_currency_short, get_currency_from_user_profile, get_currency_symbol
-from components.notification import NotificationCenter
+from components.notification import NotificationCenter, NotificationHistory
 from components.enhanced_icons import EnhancedIcon, CategoryIcon, EnhancedIconButton
 import random
 import math
@@ -801,6 +801,9 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
             state["notification_center"] = NotificationCenter(page, theme)
         notification_center = state["notification_center"]
         
+        # Load user notifications from database
+        NotificationHistory.load_user_notifications(state["user_id"])
+        
         # Get random tip
         tip = random.choice(TIPS)
         
@@ -1040,6 +1043,9 @@ def build_home_content(page: ft.Page, state: dict, toast,
     if "notification_center" not in state:
         state["notification_center"] = NotificationCenter(page, theme)
     notification_center = state["notification_center"]
+    
+    # Load user notifications from database
+    NotificationHistory.load_user_notifications(state["user_id"])
     
     expenses_list = ft.Column(spacing=4)
     

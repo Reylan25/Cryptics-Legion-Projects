@@ -36,15 +36,15 @@ class AdminDashboardPage:
                 str(stats.get("total_expenses", 0)),
                 ft.Icons.RECEIPT_LONG_ROUNDED,
                 ft.Colors.ORANGE_400,
-                None,
+                "all_expenses",
                 col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
                 "Total Amount",
-                f"â‚±{stats.get('total_amount', 0):,.2f}",
+                f"₱{stats.get('total_amount', 0):,.2f}",
                 ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED,
                 ft.Colors.GREEN_400,
-                None,
+                "all_expenses",
                 col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
@@ -52,7 +52,7 @@ class AdminDashboardPage:
                 str(stats.get("active_users", 0)),
                 ft.Icons.TRENDING_UP_ROUNDED,
                 ft.Colors.PURPLE_400,
-                None,
+                "users",
                 col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
@@ -60,7 +60,7 @@ class AdminDashboardPage:
                 str(stats.get("new_users_this_month", 0)),
                 ft.Icons.PERSON_ADD_ROUNDED,
                 ft.Colors.CYAN_400,
-                None,
+                "users",
                 col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
@@ -68,7 +68,7 @@ class AdminDashboardPage:
                 str(stats.get("total_accounts", 0)),
                 ft.Icons.ACCOUNT_BALANCE_ROUNDED,
                 ft.Colors.PINK_400,
-                None,
+                "all_accounts",
                 col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
         ], spacing=12, run_spacing=12)
@@ -107,32 +107,75 @@ class AdminDashboardPage:
         )
         
         # Recent Activity Section
-        recent_logs = db.get_admin_logs(limit=5)
+        recent_logs = db.get_admin_logs(limit=10)
         
         recent_activity = ft.Container(
             content=ft.Column([
-                ft.Text(
-                    "Recent Activity",
-                    size=18,
-                    weight=ft.FontWeight.BOLD,
-                    color=ft.Colors.WHITE
-                ),
-                ft.Container(height=12),
-                ft.Column([
-                    self.create_activity_item(log) for log in recent_logs
-                ] if recent_logs else [
-                    ft.Text(
-                        "No recent activity",
-                        size=14,
-                        color=ft.Colors.GREY_400,
-                        italic=True
+                ft.Row([
+                    ft.Column([
+                        ft.Text(
+                            "Recent Activity",
+                            size=20,
+                            weight=ft.FontWeight.BOLD,
+                            color=ft.Colors.WHITE
+                        ),
+                        ft.Text(
+                            "Latest admin actions and system events",
+                            size=13,
+                            color=ft.Colors.GREY_400
+                        ),
+                    ], spacing=2),
+                    ft.Container(expand=True),
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.HISTORY_ROUNDED, size=16, color=ft.Colors.BLUE_400),
+                            ft.Text(
+                                f"{len(recent_logs)} recent",
+                                size=12,
+                                color=ft.Colors.BLUE_400,
+                                weight=ft.FontWeight.W_500
+                            )
+                        ], spacing=6),
+                        bgcolor="#0A2540",
+                        padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                        border_radius=20,
+                        border=ft.border.all(1, ft.Colors.BLUE_800)
                     )
-                ], spacing=8)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Container(height=16),
+                ft.Column([
+                    self.create_enhanced_activity_item(log, idx) for idx, log in enumerate(recent_logs)
+                ] if recent_logs else [
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Icon(ft.Icons.EVENT_NOTE_OUTLINED, size=48, color=ft.Colors.GREY_700),
+                            ft.Text(
+                                "No recent activity",
+                                size=15,
+                                weight=ft.FontWeight.W_500,
+                                color=ft.Colors.GREY_500
+                            ),
+                            ft.Text(
+                                "Admin actions will appear here",
+                                size=12,
+                                color=ft.Colors.GREY_600
+                            ),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                        padding=40,
+                        alignment=ft.alignment.center
+                    )
+                ], spacing=6)
             ]),
             padding=20,
             bgcolor="#2C2C2E",
             border_radius=12,
-            margin=ft.margin.only(top=8)
+            margin=ft.margin.only(top=8),
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=8,
+                color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK),
+                offset=ft.Offset(0, 2)
+            )
         )
         
         # Main content with responsive padding
@@ -170,14 +213,18 @@ class AdminDashboardPage:
                 ft.Container(height=12),
                 ft.Text(
                     value,
-                    size=24,
+                    size=22,
                     weight=ft.FontWeight.BOLD,
-                    color=ft.Colors.WHITE
+                    color=ft.Colors.WHITE,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    max_lines=1
                 ),
                 ft.Text(
                     title,
-                    size=13,
-                    color=ft.Colors.GREY_400
+                    size=12,
+                    color=ft.Colors.GREY_400,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    max_lines=2
                 ),
             ], spacing=4),
             padding=16,
@@ -213,7 +260,7 @@ class AdminDashboardPage:
         )
     
     def create_activity_item(self, log: tuple):
-        """Create an activity log item"""
+        """Create an activity log item (deprecated - use create_enhanced_activity_item)"""
         
         # log: (id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username)
         log_id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username = log
@@ -248,7 +295,7 @@ class AdminDashboardPage:
                         color=ft.Colors.WHITE
                     ),
                     ft.Text(
-                        f"{admin_username} â€¢ {time_str}",
+                        f"{admin_username} • {time_str}",
                         size=11,
                         color=ft.Colors.GREY_400
                     ),
@@ -258,6 +305,197 @@ class AdminDashboardPage:
             bgcolor="#1C1C1E",
             border_radius=8,
             border=ft.border.all(1, ft.Colors.GREY_700)
+        )
+    
+    def create_enhanced_activity_item(self, log: tuple, index: int):
+        """Create an enhanced activity log item with better visuals"""
+        
+        # log: (id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username)
+        log_id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username = log
+        
+        # Format timestamp - relative time
+        from datetime import datetime
+        try:
+            dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+            now = datetime.now()
+            diff = now - dt
+            
+            if diff.days == 0:
+                if diff.seconds < 60:
+                    time_str = "Just now"
+                elif diff.seconds < 3600:
+                    minutes = diff.seconds // 60
+                    time_str = f"{minutes}m ago"
+                else:
+                    hours = diff.seconds // 3600
+                    time_str = f"{hours}h ago"
+            elif diff.days == 1:
+                time_str = "Yesterday"
+            elif diff.days < 7:
+                time_str = f"{diff.days}d ago"
+            else:
+                time_str = dt.strftime("%b %d, %Y")
+            
+            # Full timestamp for tooltip
+            full_time = dt.strftime("%B %d, %Y at %I:%M %p")
+        except:
+            time_str = timestamp
+            full_time = timestamp
+        
+        # Enhanced icon and color based on action with categories
+        action_config = {
+            "login": {
+                "icon": ft.Icons.LOGIN_ROUNDED,
+                "color": ft.Colors.GREEN_400,
+                "bg": "#0A3A2A",
+                "border": ft.Colors.GREEN_800,
+                "category": "Authentication"
+            },
+            "logout": {
+                "icon": ft.Icons.LOGOUT_ROUNDED,
+                "color": ft.Colors.BLUE_400,
+                "bg": "#0A2540",
+                "border": ft.Colors.BLUE_800,
+                "category": "Authentication"
+            },
+            "delete_user": {
+                "icon": ft.Icons.DELETE_FOREVER_ROUNDED,
+                "color": ft.Colors.RED_400,
+                "bg": "#3A0A0A",
+                "border": ft.Colors.RED_800,
+                "category": "User Management"
+            },
+            "view_users": {
+                "icon": ft.Icons.PEOPLE_OUTLINED,
+                "color": ft.Colors.PURPLE_400,
+                "bg": "#2A0A3A",
+                "border": ft.Colors.PURPLE_800,
+                "category": "User Management"
+            },
+            "view_logs": {
+                "icon": ft.Icons.DESCRIPTION_OUTLINED,
+                "color": ft.Colors.ORANGE_400,
+                "bg": "#3A2A0A",
+                "border": ft.Colors.ORANGE_800,
+                "category": "System"
+            },
+            "create_announcement": {
+                "icon": ft.Icons.CAMPAIGN_ROUNDED,
+                "color": ft.Colors.AMBER_400,
+                "bg": "#3A2A0A",
+                "border": ft.Colors.AMBER_800,
+                "category": "Communications"
+            },
+            "add_policy_rule": {
+                "icon": ft.Icons.RULE_ROUNDED,
+                "color": ft.Colors.CYAN_400,
+                "bg": "#0A2A3A",
+                "border": ft.Colors.CYAN_800,
+                "category": "Policy"
+            },
+        }
+        
+        config = action_config.get(action, {
+            "icon": ft.Icons.INFO_ROUNDED,
+            "color": ft.Colors.GREY_400,
+            "bg": "#1C1C1E",
+            "border": ft.Colors.GREY_700,
+            "category": "General"
+        })
+        
+        # Format action text
+        action_text = details or action.replace("_", " ").title()
+        
+        # Add target user info if available
+        if target_username and target_username != "None":
+            action_text += f" → {target_username}"
+        
+        return ft.Container(
+            content=ft.Row([
+                # Timeline dot with connecting line
+                ft.Container(
+                    content=ft.Column([
+                        ft.Container(
+                            content=ft.Icon(config["icon"], size=16, color=config["color"]),
+                            width=36,
+                            height=36,
+                            border_radius=18,
+                            bgcolor=config["bg"],
+                            border=ft.border.all(2, config["border"]),
+                            alignment=ft.alignment.center,
+                        ),
+                        # Connecting line (hide for last item)
+                        ft.Container(
+                            width=2,
+                            height=40,
+                            bgcolor=ft.Colors.GREY_800,
+                            visible=index < 9  # Hide line for last item
+                        ) if index < 9 else ft.Container()
+                    ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    width=40
+                ),
+                # Content
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Column([
+                                ft.Row([
+                                    ft.Text(
+                                        action_text,
+                                        size=14,
+                                        weight=ft.FontWeight.W_500,
+                                        color=ft.Colors.WHITE
+                                    ),
+                                    ft.Container(
+                                        content=ft.Text(
+                                            config["category"],
+                                            size=10,
+                                            weight=ft.FontWeight.BOLD,
+                                            color=config["color"]
+                                        ),
+                                        bgcolor=config["bg"],
+                                        padding=ft.padding.symmetric(horizontal=8, vertical=3),
+                                        border_radius=10,
+                                        border=ft.border.all(1, config["border"])
+                                    )
+                                ], spacing=10),
+                                ft.Row([
+                                    ft.Icon(ft.Icons.PERSON_OUTLINE, size=12, color=ft.Colors.GREY_500),
+                                    ft.Text(
+                                        admin_username,
+                                        size=12,
+                                        color=ft.Colors.GREY_400,
+                                        weight=ft.FontWeight.W_500
+                                    ),
+                                    ft.Container(
+                                        content=ft.Text("•", size=12, color=ft.Colors.GREY_600),
+                                        margin=ft.margin.symmetric(horizontal=4)
+                                    ),
+                                    ft.Icon(ft.Icons.ACCESS_TIME_ROUNDED, size=12, color=ft.Colors.GREY_500),
+                                    ft.Text(
+                                        time_str,
+                                        size=12,
+                                        color=ft.Colors.GREY_400,
+                                        tooltip=full_time
+                                    ),
+                                ], spacing=6),
+                            ], spacing=6, expand=True),
+                        ]),
+                    ], spacing=4),
+                    bgcolor="#1C1C1E",
+                    padding=14,
+                    border_radius=10,
+                    border=ft.border.all(1, ft.Colors.GREY_800),
+                    expand=True,
+                    shadow=ft.BoxShadow(
+                        spread_radius=0,
+                        blur_radius=4,
+                        color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK),
+                        offset=ft.Offset(0, 1)
+                    )
+                ),
+            ], spacing=12),
+            margin=ft.margin.only(bottom=0)
         )
     
     def handle_logout(self, e):

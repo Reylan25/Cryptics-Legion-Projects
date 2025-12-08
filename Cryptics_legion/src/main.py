@@ -28,6 +28,7 @@ from ui.privacy_page import build_privacy_content
 from ui.passcode_lock_page import create_passcode_setup, create_passcode_verify
 from ui.admin_dashboard_page import AdminDashboardPage
 from ui.admin_users_page import AdminUserManagementPage
+from components.notification import NotificationHistory
 from ui.admin_logs_page import AdminLogsPage
 from ui.admin_main_layout import AdminMainLayout
 from utils.statistics import create_charts_view
@@ -280,6 +281,10 @@ def main(page: ft.Page):
     
     def do_logout():
         """Handle logout."""
+        # Save notification read states before clearing
+        NotificationHistory.on_user_logout()
+        
+        # Clear user session
         state["user_id"] = None
         state["editing_id"] = None
         show_login()

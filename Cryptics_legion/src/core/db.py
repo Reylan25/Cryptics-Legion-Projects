@@ -915,7 +915,8 @@ def get_all_users_for_admin():
     cur.execute("""
         SELECT u.id, u.username, u.full_name, u.email, u.last_login, u.has_seen_onboarding,
                (SELECT COUNT(*) FROM expenses WHERE user_id = u.id) as expense_count,
-               (SELECT SUM(amount) FROM expenses WHERE user_id = u.id) as total_spent
+               (SELECT SUM(amount) FROM expenses WHERE user_id = u.id) as total_spent,
+               u.currency
         FROM users u
         ORDER BY u.id DESC
     """)
@@ -1008,6 +1009,71 @@ def delete_user_by_admin(user_id: int) -> bool:
         return False
     finally:
         conn.close()
+
+
+def get_user_expenses_for_admin(user_id: int, limit: int = 5):
+    """Get user's expenses for admin view."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, description, amount, category, date, receipt_path
+        FROM expenses
+        WHERE user_id = ?
+        ORDER BY date DESC
+        LIMIT ?
+    """, (user_id, limit))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_user_accounts_for_admin(user_id: int):
+    """Get user's accounts for admin view."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, name, balance, currency
+        FROM accounts
+        WHERE user_id = ?
+        ORDER BY name
+    """, (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_all_expenses_for_admin():
+    """Get all expenses from all users for admin view."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT e.id, e.user_id, e.amount, e.category, e.description, e.date, 
+               e.account_id, u.username, u.currency
+        FROM expenses e
+        LEFT JOIN users u ON e.user_id = u.id
+        ORDER BY e.date DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_all_accounts_for_admin():
+    """Get all accounts from all users for admin view."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT a.id, a.user_id, a.name, a.balance, a.currency, a.type, 
+               a.is_primary, u.username, u.currency as user_currency
+        FROM accounts a
+        LEFT JOIN users u ON a.user_id = u.id
+        ORDER BY a.balance DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
 
 def set_biometric_enabled(user_id: int, enabled: bool = True) -> bool:
     """Enable or disable biometric authentication for a user."""
@@ -1130,6 +1196,43 @@ def init_admin_config_tables():
         started_at TEXT DEFAULT CURRENT_TIMESTAMP,
         completed_at TEXT,
         FOREIGN KEY (integration_id) REFERENCES accounting_integration(id)
+    )
+    """)
+    
+    # Announcements table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT DEFAULT 'info',
+        priority TEXT DEFAULT 'normal',
+        admin_id INTEGER,
+        target_users TEXT DEFAULT 'all',
+        start_date TEXT DEFAULT CURRENT_TIMESTAMP,
+        end_date TEXT,
+        is_active INTEGER DEFAULT 1,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (admin_id) REFERENCES admins(id)
+    )
+    """)
+    
+    # User Notifications table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        announcement_id INTEGER,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT DEFAULT 'info',
+        is_read INTEGER DEFAULT 0,
+        read_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (announcement_id) REFERENCES announcements(id)
     )
     """)
     
@@ -1485,3 +1588,176 @@ def get_sync_logs(integration_id=None, limit=50):
         cursor.execute(query + " ORDER BY sl.started_at DESC LIMIT ?", (limit,))
     
     return cursor.fetchall()
+
+
+# ===== ANNOUNCEMENTS & NOTIFICATIONS =====
+
+def add_announcement(title, message, type='info', priority='normal', admin_id=None, 
+                     target_users='all', start_date=None, end_date=None, is_pinned=0):
+    """Create a new announcement"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    INSERT INTO announcements (title, message, type, priority, admin_id, target_users, 
+                              start_date, end_date, is_pinned)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (title, message, type, priority, admin_id, target_users, start_date, end_date, is_pinned))
+    
+    announcement_id = cursor.lastrowid
+    
+    # Create notifications for users
+    if target_users == 'all':
+        cursor.execute("SELECT id FROM users")
+        user_ids = [row[0] for row in cursor.fetchall()]
+    else:
+        # Parse comma-separated user IDs
+        user_ids = [int(uid.strip()) for uid in target_users.split(',') if uid.strip().isdigit()]
+    
+    for user_id in user_ids:
+        cursor.execute("""
+        INSERT INTO user_notifications (user_id, announcement_id, title, message, type)
+        VALUES (?, ?, ?, ?, ?)
+        """, (user_id, announcement_id, title, message, type))
+    
+    conn.commit()
+    conn.close()
+    return announcement_id
+
+
+def get_announcements(include_inactive=False, limit=None):
+    """Get all announcements"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    query = """
+    SELECT a.id, a.title, a.message, a.type, a.priority, a.admin_id, ad.username,
+           a.target_users, a.start_date, a.end_date, a.is_active, a.is_pinned,
+           a.created_at, a.updated_at,
+           (SELECT COUNT(*) FROM user_notifications un WHERE un.announcement_id = a.id) as notification_count,
+           (SELECT COUNT(*) FROM user_notifications un WHERE un.announcement_id = a.id AND un.is_read = 1) as read_count
+    FROM announcements a
+    LEFT JOIN admins ad ON a.admin_id = ad.id
+    """
+    
+    if not include_inactive:
+        query += " WHERE a.is_active = 1"
+    
+    query += " ORDER BY a.is_pinned DESC, a.created_at DESC"
+    
+    if limit:
+        query += f" LIMIT {limit}"
+    
+    cursor.execute(query)
+    return cursor.fetchall()
+
+
+def get_announcement_by_id(announcement_id):
+    """Get announcement by ID"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT a.id, a.title, a.message, a.type, a.priority, a.admin_id, ad.username,
+           a.target_users, a.start_date, a.end_date, a.is_active, a.is_pinned,
+           a.created_at, a.updated_at
+    FROM announcements a
+    LEFT JOIN admins ad ON a.admin_id = ad.id
+    WHERE a.id = ?
+    """, (announcement_id,))
+    
+    return cursor.fetchone()
+
+
+def update_announcement(announcement_id, **fields):
+    """Update announcement fields"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    updates = []
+    params = []
+    
+    for field, value in fields.items():
+        if field in ['title', 'message', 'type', 'priority', 'target_users', 
+                     'start_date', 'end_date', 'is_active', 'is_pinned']:
+            updates.append(f"{field} = ?")
+            params.append(value)
+    
+    if not updates:
+        return False
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(announcement_id)
+    
+    cursor.execute(f"""
+    UPDATE announcements
+    SET {', '.join(updates)}
+    WHERE id = ?
+    """, params)
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def delete_announcement(announcement_id):
+    """Delete announcement and its notifications"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM user_notifications WHERE announcement_id = ?", (announcement_id,))
+    cursor.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def get_user_notifications(user_id, include_read=False, limit=20):
+    """Get notifications for a specific user"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    query = """
+    SELECT id, announcement_id, title, message, type, is_read, read_at, created_at
+    FROM user_notifications
+    WHERE user_id = ?
+    """
+    
+    if not include_read:
+        query += " AND is_read = 0"
+    
+    query += " ORDER BY created_at DESC LIMIT ?"
+    
+    cursor.execute(query, (user_id, limit))
+    return cursor.fetchall()
+
+
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    from datetime import datetime
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    UPDATE user_notifications
+    SET is_read = 1, read_at = ?
+    WHERE id = ?
+    """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), notification_id))
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def get_unread_notification_count(user_id):
+    """Get count of unread notifications for a user"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT COUNT(*) FROM user_notifications
+    WHERE user_id = ? AND is_read = 0
+    """, (user_id,))
+    
+    return cursor.fetchone()[0]

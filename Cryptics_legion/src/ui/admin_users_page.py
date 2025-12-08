@@ -5,6 +5,7 @@ View, search, and manage all user accounts
 
 import flet as ft
 from core import db
+from utils.currency import get_currency_symbol
 
 
 class AdminUserManagementPage:
@@ -66,23 +67,31 @@ class AdminUserManagementPage:
         total_spent = sum(float(user[7]) if user[7] else 0.0 for user in self.users)  # total_spent
         
         summary = ft.Container(
-            content=ft.Row([
-                self.create_summary_chip(
-                    f"{total_users} Users",
-                    ft.Icons.PEOPLE_ROUNDED,
-                    ft.Colors.BLUE_400
-                ),
-                self.create_summary_chip(
-                    f"{total_expenses} Expenses",
-                    ft.Icons.RECEIPT_LONG_ROUNDED,
-                    ft.Colors.ORANGE_400
-                ),
-                self.create_summary_chip(
-                    f"â‚±{total_spent:,.2f} Total",
-                    ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED,
-                    ft.Colors.GREEN_400
-                ),
-            ], spacing=12, wrap=True),
+            content=ft.Column([
+                ft.Row([
+                    self.create_summary_chip(
+                        f"{total_users} Users",
+                        ft.Icons.PEOPLE_ROUNDED,
+                        ft.Colors.BLUE_400
+                    ),
+                    self.create_summary_chip(
+                        f"{total_expenses} Expenses",
+                        ft.Icons.RECEIPT_LONG_ROUNDED,
+                        ft.Colors.ORANGE_400
+                    ),
+                    self.create_summary_chip(
+                        f"₱{total_spent:,.2f} Total",
+                        ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED,
+                        ft.Colors.GREEN_400
+                    ),
+                ], spacing=12, wrap=True),
+                ft.Text(
+                    "Note: Total amounts shown in mixed currencies",
+                    size=10,
+                    color=ft.Colors.GREY_500,
+                    italic=True
+                )
+            ], spacing=4),
             padding=ft.padding.symmetric(horizontal=20, vertical=0)
         )
         
@@ -155,95 +164,261 @@ class AdminUserManagementPage:
         )
     
     def create_user_card(self, user: tuple):
-        """Create a user card"""
+        """Create an enhanced user card with detailed information"""
         
-        # user from DB: (id, username, full_name, email, last_login, has_seen_onboarding, expense_count, total_spent)
+        # user from DB: (id, username, full_name, email, last_login, has_seen_onboarding, expense_count, total_spent, preferred_currency)
         user_id = user[0]
         username = user[1]
         full_name = user[2] or username
         email = user[3]
         last_login = user[4]
+        has_seen_onboarding = user[5]
         expense_count = int(user[6]) if user[6] else 0
         total_spent = float(user[7]) if user[7] else 0.0
+        user_currency = user[8] if len(user) > 8 and user[8] else "PHP"
         
-        # Format date
-        from datetime import datetime
+        # Get currency symbol
+        currency_symbol = get_currency_symbol(user_currency)
+        
+        # Format date and calculate activity
+        from datetime import datetime, timedelta
         try:
             if last_login:
                 dt = datetime.strptime(last_login, "%Y-%m-%d %H:%M:%S")
                 date_str = dt.strftime("%b %d, %Y")
+                time_str = dt.strftime("%I:%M %p")
+                
+                # Calculate days since last login
+                days_ago = (datetime.now() - dt).days
+                if days_ago == 0:
+                    activity_status = "Active Today"
+                    status_color = ft.Colors.GREEN_400
+                elif days_ago <= 7:
+                    activity_status = f"Active {days_ago}d ago"
+                    status_color = ft.Colors.BLUE_400
+                elif days_ago <= 30:
+                    activity_status = f"Active {days_ago}d ago"
+                    status_color = ft.Colors.ORANGE_400
+                else:
+                    activity_status = "Inactive"
+                    status_color = ft.Colors.RED_400
             else:
                 date_str = "Never"
+                time_str = "--"
+                activity_status = "Never Logged In"
+                status_color = ft.Colors.GREY_500
         except:
             date_str = "Unknown"
+            time_str = "--"
+            activity_status = "Unknown"
+            status_color = ft.Colors.GREY_500
+        
+        # Calculate average expense
+        avg_expense = total_spent / expense_count if expense_count > 0 else 0.0
+        
+        # Onboarding status
+        onboarding_status = "Completed" if has_seen_onboarding else "Pending"
+        onboarding_color = ft.Colors.GREEN_400 if has_seen_onboarding else ft.Colors.AMBER_400
+        
+        # User initials for avatar
+        initials = "".join([word[0].upper() for word in full_name.split()[:2]])
+        if not initials:
+            initials = username[0].upper()
         
         return ft.Container(
             content=ft.Column([
+                # Header Row with Avatar and Actions
                 ft.Row([
+                    # Enhanced Avatar
                     ft.Container(
-                        content=ft.Icon(
-                            ft.Icons.ACCOUNT_CIRCLE_ROUNDED,
-                            size=40,
-                            color=ft.Colors.PRIMARY
-                        ),
-                        bgcolor=ft.Colors.BLUE_900,
-                        border_radius=25,
-                        width=50,
-                        height=50,
-                        alignment=ft.alignment.center
-                    ),
-                    ft.Column([
-                        ft.Text(
-                            username,
-                            size=16,
+                        content=ft.Text(
+                            initials,
+                            size=20,
                             weight=ft.FontWeight.BOLD,
                             color=ft.Colors.WHITE
                         ),
+                        bgcolor=ft.Colors.BLUE_700,
+                        border_radius=30,
+                        width=60,
+                        height=60,
+                        alignment=ft.alignment.center,
+                        border=ft.border.all(2, ft.Colors.BLUE_400)
+                    ),
+                    # User Info
+                    ft.Column([
+                        ft.Row([
+                            ft.Text(
+                                username.upper(),
+                                size=16,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.WHITE
+                            ),
+                            ft.Container(
+                                content=ft.Text(
+                                    activity_status,
+                                    size=10,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.BLACK
+                                ),
+                                bgcolor=status_color,
+                                padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                border_radius=10
+                            )
+                        ], spacing=8),
                         ft.Text(
-                            email or "No email",
-                            size=12,
-                            color=ft.Colors.GREY_400
+                            full_name,
+                            size=13,
+                            color=ft.Colors.GREY_300,
+                            weight=ft.FontWeight.W_500
                         ),
+                        ft.Row([
+                            ft.Icon(ft.Icons.EMAIL_OUTLINED, size=12, color=ft.Colors.GREY_500),
+                            ft.Text(
+                                email or "No email provided",
+                                size=11,
+                                color=ft.Colors.GREY_500,
+                                overflow=ft.TextOverflow.ELLIPSIS
+                            ),
+                        ], spacing=4),
                     ], spacing=2, expand=True),
-                    ft.IconButton(
-                        icon=ft.Icons.DELETE_FOREVER_ROUNDED,
-                        icon_color=ft.Colors.ERROR,
-                        tooltip="Delete User",
-                        on_click=lambda _, uid=user_id, uname=username: self.confirm_delete_user(uid, uname)
-                    )
+                    # Action Buttons
+                    ft.Column([
+                        ft.IconButton(
+                            icon=ft.Icons.VISIBILITY_ROUNDED,
+                            icon_color=ft.Colors.BLUE_400,
+                            icon_size=20,
+                            tooltip="View Details",
+                            on_click=lambda _, u=user: self.show_user_details(u)
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.DELETE_FOREVER_ROUNDED,
+                            icon_color=ft.Colors.ERROR,
+                            icon_size=20,
+                            tooltip="Delete User",
+                            on_click=lambda _, uid=user_id, uname=username: self.confirm_delete_user(uid, uname)
+                        ),
+                    ], spacing=0),
                 ], spacing=12),
-                ft.Divider(height=12, color=ft.Colors.GREY_700),
-                ft.Row([
-                    ft.Row([
-                        ft.Icon(ft.Icons.RECEIPT_LONG_ROUNDED, size=16, color=ft.Colors.GREY_400),
-                        ft.Text(
-                            f"{expense_count} expenses",
-                            size=13,
-                            color=ft.Colors.GREY_400
+                
+                ft.Divider(height=1, color=ft.Colors.GREY_700),
+                
+                # Statistics Grid
+                ft.Container(
+                    content=ft.Row([
+                        # Expenses Count
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Icon(ft.Icons.RECEIPT_LONG_ROUNDED, size=24, color=ft.Colors.ORANGE_400),
+                                ft.Text(
+                                    str(expense_count),
+                                    size=18,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.WHITE
+                                ),
+                                ft.Text(
+                                    "Expenses",
+                                    size=11,
+                                    color=ft.Colors.GREY_500
+                                ),
+                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                            bgcolor="#1C1C1E",
+                            border_radius=10,
+                            padding=12,
+                            expand=True,
+                            border=ft.border.all(1, ft.Colors.GREY_800)
                         ),
-                    ], spacing=6),
-                    ft.Row([
-                        ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED, size=16, color=ft.Colors.GREY_400),
-                        ft.Text(
-                            f"â‚±{total_spent:,.2f}",
-                            size=13,
-                            color=ft.Colors.GREY_400
+                        # Total Spent
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED, size=24, color=ft.Colors.GREEN_400),
+                                ft.Text(
+                                    f"{currency_symbol}{total_spent:,.0f}",
+                                    size=18,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.WHITE
+                                ),
+                                ft.Text(
+                                    "Total Spent",
+                                    size=11,
+                                    color=ft.Colors.GREY_500
+                                ),
+                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                            bgcolor="#1C1C1E",
+                            border_radius=10,
+                            padding=12,
+                            expand=True,
+                            border=ft.border.all(1, ft.Colors.GREY_800)
                         ),
-                    ], spacing=6),
-                    ft.Row([
-                        ft.Icon(ft.Icons.CALENDAR_TODAY_ROUNDED, size=16, color=ft.Colors.GREY_400),
-                        ft.Text(
-                            date_str,
-                            size=13,
-                            color=ft.Colors.GREY_400
+                        # Average
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Icon(ft.Icons.TRENDING_UP_ROUNDED, size=24, color=ft.Colors.PURPLE_400),
+                                ft.Text(
+                                    f"{currency_symbol}{avg_expense:,.0f}",
+                                    size=18,
+                                    weight=ft.FontWeight.BOLD,
+                                    color=ft.Colors.WHITE
+                                ),
+                                ft.Text(
+                                    "Average",
+                                    size=11,
+                                    color=ft.Colors.GREY_500
+                                ),
+                            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                            bgcolor="#1C1C1E",
+                            border_radius=10,
+                            padding=12,
+                            expand=True,
+                            border=ft.border.all(1, ft.Colors.GREY_800)
                         ),
-                    ], spacing=6),
-                ], spacing=16, wrap=True),
+                    ], spacing=8),
+                    margin=ft.margin.only(top=4, bottom=4)
+                ),
+                
+                # Additional Info Row
+                ft.Container(
+                    content=ft.Row([
+                        ft.Row([
+                            ft.Icon(ft.Icons.LOGIN_ROUNDED, size=14, color=ft.Colors.CYAN_400),
+                            ft.Column([
+                                ft.Text("Last Login", size=9, color=ft.Colors.GREY_500),
+                                ft.Text(date_str, size=11, weight=ft.FontWeight.W_500, color=ft.Colors.WHITE),
+                                ft.Text(time_str, size=9, color=ft.Colors.GREY_400),
+                            ], spacing=0),
+                        ], spacing=6),
+                        ft.Container(width=1, height=30, bgcolor=ft.Colors.GREY_800),
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED, size=14, color=onboarding_color),
+                            ft.Column([
+                                ft.Text("Onboarding", size=9, color=ft.Colors.GREY_500),
+                                ft.Text(onboarding_status, size=11, weight=ft.FontWeight.W_500, color=onboarding_color),
+                            ], spacing=0),
+                        ], spacing=6),
+                        ft.Container(width=1, height=30, bgcolor=ft.Colors.GREY_800),
+                        ft.Row([
+                            ft.Icon(ft.Icons.FINGERPRINT_ROUNDED, size=14, color=ft.Colors.PINK_400),
+                            ft.Column([
+                                ft.Text("User ID", size=9, color=ft.Colors.GREY_500),
+                                ft.Text(f"#{user_id}", size=11, weight=ft.FontWeight.W_500, color=ft.Colors.WHITE),
+                            ], spacing=0),
+                        ], spacing=6),
+                    ], spacing=12, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    bgcolor="#1C1C1E",
+                    border_radius=8,
+                    padding=10,
+                    margin=ft.margin.only(top=4)
+                ),
             ], spacing=8),
             padding=16,
             bgcolor="#2C2C2E",
             border_radius=12,
-            border=ft.border.all(1, ft.Colors.GREY_700)
+            border=ft.border.all(1, ft.Colors.GREY_700),
+            shadow=ft.BoxShadow(
+                spread_radius=1,
+                blur_radius=4,
+                color=ft.Colors.with_opacity(0.1, ft.Colors.BLACK),
+                offset=ft.Offset(0, 2)
+            )
         )
     
     def handle_search(self, e):
@@ -288,6 +463,212 @@ class AdminUserManagementPage:
             ]
         
         self.page.update()
+    
+    def show_user_details(self, user: tuple):
+        """Show detailed user information in a modal"""
+        
+        user_id = user[0]
+        username = user[1]
+        full_name = user[2] or username
+        email = user[3]
+        last_login = user[4]
+        has_seen_onboarding = user[5]
+        expense_count = int(user[6]) if user[6] else 0
+        total_spent = float(user[7]) if user[7] else 0.0
+        user_currency = user[8] if len(user) > 8 and user[8] else "PHP"
+        
+        # Get currency symbol
+        currency_symbol = get_currency_symbol(user_currency)
+        
+        # Get user's recent expenses
+        expenses = db.get_user_expenses_for_admin(user_id, limit=5)
+        
+        # Get user accounts
+        accounts = db.get_user_accounts_for_admin(user_id)
+        
+        from datetime import datetime
+        try:
+            if last_login:
+                dt = datetime.strptime(last_login, "%Y-%m-%d %H:%M:%S")
+                last_login_formatted = dt.strftime("%B %d, %Y at %I:%M %p")
+            else:
+                last_login_formatted = "Never logged in"
+        except:
+            last_login_formatted = "Unknown"
+        
+        avg_expense = total_spent / expense_count if expense_count > 0 else 0.0
+        
+        details_dialog = ft.AlertDialog(
+            title=ft.Row([
+                ft.Icon(ft.Icons.PERSON_ROUNDED, color=ft.Colors.BLUE_400),
+                ft.Text(f"User Details: {username}", size=18, weight=ft.FontWeight.BOLD)
+            ], spacing=8),
+            content=ft.Container(
+                content=ft.Column([
+                    # Personal Information Section
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Personal Information", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_400),
+                            ft.Divider(height=1, color=ft.Colors.GREY_700),
+                            self.create_info_row("Full Name", full_name, ft.Icons.PERSON_OUTLINE),
+                            self.create_info_row("Username", username, ft.Icons.ACCOUNT_CIRCLE_OUTLINED),
+                            self.create_info_row("Email", email or "Not provided", ft.Icons.EMAIL_OUTLINED),
+                            self.create_info_row("User ID", f"#{user_id}", ft.Icons.FINGERPRINT),
+                        ], spacing=8),
+                        padding=12,
+                        bgcolor="#2C2C2E",
+                        border_radius=10
+                    ),
+                    
+                    # Activity Information Section
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Activity Information", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400),
+                            ft.Divider(height=1, color=ft.Colors.GREY_700),
+                            self.create_info_row("Last Login", last_login_formatted, ft.Icons.LOGIN),
+                            self.create_info_row("Onboarding", "Completed" if has_seen_onboarding else "Pending", ft.Icons.CHECK_CIRCLE),
+                            self.create_info_row("Status", "Active" if last_login else "Inactive", ft.Icons.CIRCLE),
+                        ], spacing=8),
+                        padding=12,
+                        bgcolor="#2C2C2E",
+                        border_radius=10
+                    ),
+                    
+                    # Financial Summary Section
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Financial Summary", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE_400),
+                            ft.Divider(height=1, color=ft.Colors.GREY_700),
+                            ft.Row([
+                                self.create_stat_box("Total Expenses", str(expense_count), ft.Icons.RECEIPT_LONG, ft.Colors.ORANGE_400),
+                                self.create_stat_box("Total Spent", f"{currency_symbol}{total_spent:,.2f}", ft.Icons.ACCOUNT_BALANCE_WALLET, ft.Colors.GREEN_400),
+                            ], spacing=12),
+                            ft.Row([
+                                self.create_stat_box("Average/Expense", f"{currency_symbol}{avg_expense:,.2f}", ft.Icons.TRENDING_UP, ft.Colors.PURPLE_400),
+                                self.create_stat_box("Accounts", str(len(accounts)), ft.Icons.ACCOUNT_BALANCE, ft.Colors.CYAN_400),
+                            ], spacing=12),
+                        ], spacing=8),
+                        padding=12,
+                        bgcolor="#2C2C2E",
+                        border_radius=10
+                    ),
+                    
+                    # Recent Expenses Section
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("Recent Expenses (Last 5)", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.PINK_400),
+                            ft.Divider(height=1, color=ft.Colors.GREY_700),
+                            ft.Column([
+                                self.create_expense_row(exp, currency_symbol) for exp in expenses
+                            ] if expenses else [
+                                ft.Text("No expenses yet", size=12, color=ft.Colors.GREY_500, italic=True)
+                            ], spacing=6),
+                        ], spacing=8),
+                        padding=12,
+                        bgcolor="#2C2C2E",
+                        border_radius=10
+                    ),
+                    
+                    # Accounts Section
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("User Accounts", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.CYAN_400),
+                            ft.Divider(height=1, color=ft.Colors.GREY_700),
+                            ft.Column([
+                                self.create_account_row(acc, currency_symbol) for acc in accounts
+                            ] if accounts else [
+                                ft.Text("No accounts created", size=12, color=ft.Colors.GREY_500, italic=True)
+                            ], spacing=6),
+                        ], spacing=8),
+                        padding=12,
+                        bgcolor="#2C2C2E",
+                        border_radius=10
+                    ),
+                ], spacing=12, scroll=ft.ScrollMode.AUTO),
+                width=500,
+                height=600
+            ),
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: self.page.close(details_dialog))
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor="#1C1C1E",
+        )
+        
+        self.page.open(details_dialog)
+    
+    def create_info_row(self, label: str, value: str, icon):
+        """Create an information row"""
+        return ft.Row([
+            ft.Icon(icon, size=16, color=ft.Colors.GREY_400),
+            ft.Text(f"{label}:", size=12, color=ft.Colors.GREY_400, weight=ft.FontWeight.W_500),
+            ft.Text(value, size=12, color=ft.Colors.WHITE, expand=True),
+        ], spacing=8)
+    
+    def create_stat_box(self, label: str, value: str, icon, color):
+        """Create a stat box"""
+        return ft.Container(
+            content=ft.Column([
+                ft.Icon(icon, size=20, color=color),
+                ft.Text(value, size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                ft.Text(label, size=10, color=ft.Colors.GREY_500, text_align=ft.TextAlign.CENTER),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
+            bgcolor="#1C1C1E",
+            border_radius=8,
+            padding=12,
+            expand=True,
+            border=ft.border.all(1, ft.Colors.GREY_800)
+        )
+    
+    def create_expense_row(self, expense: tuple, currency_symbol: str = "₱"):
+        """Create an expense row for details modal"""
+        # expense: (id, description, amount, category, date, ...)
+        description = expense[1]
+        amount = float(expense[2])
+        category = expense[3]
+        date = expense[4]
+        
+        from datetime import datetime
+        try:
+            dt = datetime.strptime(date, "%Y-%m-%d")
+            date_str = dt.strftime("%b %d, %Y")
+        except:
+            date_str = date
+        
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.RECEIPT, size=14, color=ft.Colors.ORANGE_400),
+                ft.Column([
+                    ft.Text(description[:30] + "..." if len(description) > 30 else description, 
+                           size=11, color=ft.Colors.WHITE, weight=ft.FontWeight.W_500),
+                    ft.Text(f"{category} • {date_str}", size=9, color=ft.Colors.GREY_500),
+                ], spacing=2, expand=True),
+                ft.Text(f"{currency_symbol}{amount:,.2f}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN_400),
+            ], spacing=8),
+            padding=8,
+            bgcolor="#1C1C1E",
+            border_radius=6,
+            border=ft.border.all(1, ft.Colors.GREY_800)
+        )
+    
+    def create_account_row(self, account: tuple, currency_symbol: str = "₱"):
+        """Create an account row for details modal"""
+        # account: (id, name, balance, currency, ...)
+        name = account[1]
+        balance = float(account[2])
+        currency = account[3] if len(account) > 3 else "PHP"
+        
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.ACCOUNT_BALANCE, size=14, color=ft.Colors.CYAN_400),
+                ft.Text(name, size=11, color=ft.Colors.WHITE, weight=ft.FontWeight.W_500, expand=True),
+                ft.Text(f"{currency_symbol}{balance:,.2f}", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.CYAN_400),
+            ], spacing=8),
+            padding=8,
+            bgcolor="#1C1C1E",
+            border_radius=6,
+            border=ft.border.all(1, ft.Colors.GREY_800)
+        )
     
     def confirm_delete_user(self, user_id: int, username: str):
         """Show confirmation dialog before deleting user"""

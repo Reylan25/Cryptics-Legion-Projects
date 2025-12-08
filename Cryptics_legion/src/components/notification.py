@@ -3,6 +3,7 @@ import flet as ft
 from typing import Literal
 import asyncio
 from datetime import datetime
+from core import db
 
 class NotificationHistory:
     """
@@ -10,6 +11,7 @@ class NotificationHistory:
     """
     _instance = None
     _notifications = []
+    _current_user_id = None
     
     def __new__(cls):
         if cls._instance is None:
@@ -36,6 +38,31 @@ class NotificationHistory:
             cls._notifications = cls._notifications[:50]
     
     @classmethod
+    def load_user_notifications(cls, user_id: int):
+        """Load notifications from database for a user."""
+        cls._current_user_id = user_id  # Store for future operations
+        notifications = db.get_user_notifications(user_id, include_read=True, limit=50)
+        cls._notifications.clear()
+        
+        for notif in notifications:
+            notif_id, announcement_id, title, message, notif_type, is_read, read_at, created_at = notif
+            
+            # Parse datetime
+            try:
+                timestamp = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+            except:
+                timestamp = datetime.now()
+            
+            cls._notifications.append({
+                "id": notif_id,
+                "title": title,
+                "message": message,
+                "type": notif_type,
+                "timestamp": timestamp,
+                "read": bool(is_read),
+            })
+    
+    @classmethod
     def get_all_notifications(cls):
         """Get all notifications."""
         return cls._notifications
@@ -47,14 +74,51 @@ class NotificationHistory:
     
     @classmethod
     def mark_all_read(cls):
-        """Mark all notifications as read."""
+        """Mark all notifications as read and save to database."""
         for n in cls._notifications:
+            if not n["read"] and "id" in n:
+                try:
+                    db.mark_notification_read(n["id"])
+                except Exception as e:
+                    print(f"Error marking notification {n.get('id')} as read: {e}")
             n["read"] = True
     
     @classmethod
+    def mark_notification_read(cls, notification_id: int):
+        """Mark a specific notification as read in database."""
+        try:
+            db.mark_notification_read(notification_id)
+            # Update in memory
+            for n in cls._notifications:
+                if n.get("id") == notification_id:
+                    n["read"] = True
+                    break
+        except Exception as e:
+            print(f"Error marking notification {notification_id} as read: {e}")
+    
+    @classmethod
     def clear_all(cls):
-        """Clear all notifications."""
+        """Clear all notifications from memory (does not delete from database)."""
         cls._notifications.clear()
+    
+    @classmethod
+    def refresh_from_database(cls, user_id: int):
+        """Reload notifications from database for the current user."""
+        cls.load_user_notifications(user_id)
+    
+    @classmethod
+    def on_user_logout(cls):
+        """Clean up notifications when user logs out."""
+        # Save any pending read states before clearing
+        for n in cls._notifications:
+            if n["read"] and "id" in n:
+                try:
+                    db.mark_notification_read(n["id"])
+                except:
+                    pass
+        # Clear memory
+        cls._notifications.clear()
+        cls._current_user_id = None
 
 
 class ImmersiveNotification:

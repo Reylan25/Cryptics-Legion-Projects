@@ -12,6 +12,8 @@ from ui.admin_expense_categories_page import AdminExpenseCategoriesPage
 from ui.admin_policy_rules_page import AdminPolicyRulesPage
 from ui.admin_currency_rates_page import AdminCurrencyRatesPage
 from ui.admin_accounting_integration_page import AdminAccountingIntegrationPage
+from ui.admin_all_expenses_page import AdminAllExpensesPage
+from ui.admin_all_accounts_page import AdminAllAccountsPage
 
 
 class AdminMainLayout:
@@ -24,22 +26,7 @@ class AdminMainLayout:
         self.sidebar_visible = True
         
     def build(self):
-        """Build the main admin layout with sidebar"""
-        
-        # Create sidebar
-        self.sidebar_container = ft.Container(
-            content=None,  # Will be set below
-            width=220,
-            visible=True,
-            animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT)
-        )
-        
-        self.sidebar = AdminSidebar(
-            self.page,
-            self.current_route,
-            self.handle_navigation
-        )
-        self.sidebar_container.content = self.sidebar.build()
+        """Build the main admin layout without sidebar"""
         
         # Create main content area
         self.content_area = ft.Container(
@@ -51,13 +38,10 @@ class AdminMainLayout:
         # Create top bar
         top_bar = self.create_top_bar()
         
-        # Main layout - responsive
-        layout = ft.Row([
-            self.sidebar_container,
-            ft.Column([
-                top_bar,
-                self.content_area,
-            ], spacing=0, expand=True)
+        # Main layout - no sidebar
+        layout = ft.Column([
+            top_bar,
+            self.content_area,
         ], spacing=0, expand=True)
         
         return layout
@@ -65,13 +49,13 @@ class AdminMainLayout:
     def create_top_bar(self):
         """Create top navigation bar"""
         
-        # Hamburger menu button for mobile
+        # Hamburger menu button - shows dropdown menu
         menu_button = ft.IconButton(
             icon=ft.Icons.MENU_ROUNDED,
             icon_size=24,
             icon_color=ft.Colors.GREY_400,
-            tooltip="Toggle Menu",
-            on_click=self.toggle_sidebar
+            tooltip="Menu",
+            on_click=self.show_navigation_menu
         )
         
         # Search field - responsive
@@ -156,23 +140,114 @@ class AdminMainLayout:
         self.sidebar_container.visible = not self.sidebar_container.visible
         self.page.update()
     
+    def show_navigation_menu(self, e):
+        """Show navigation menu dropdown"""
+        
+        def navigate_and_close(route):
+            def handler(e):
+                self.page.close(nav_menu)
+                self.handle_navigation(route)
+            return handler
+        
+        nav_menu = ft.AlertDialog(
+            title=ft.Row([
+                ft.Icon(ft.Icons.DASHBOARD_ROUNDED, color=ft.Colors.BLUE_400, size=20),
+                ft.Text("Navigation Menu", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+            ], spacing=8),
+            content=ft.Container(
+                content=ft.Column([
+                    # Overview Section
+                    ft.Container(
+                        content=ft.Text("OVERVIEW", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500),
+                        padding=ft.padding.only(left=10, top=10, bottom=5)
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.DASHBOARD_ROUNDED, color=ft.Colors.BLUE_400),
+                        title=ft.Text("Dashboard", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "admin_dashboard",
+                        on_click=navigate_and_close("admin_dashboard")
+                    ),
+                    
+                    # Expense Management Section
+                    ft.Container(
+                        content=ft.Text("EXPENSE MANAGEMENT", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500),
+                        padding=ft.padding.only(left=10, top=15, bottom=5)
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.CATEGORY_ROUNDED, color=ft.Colors.ORANGE_400),
+                        title=ft.Text("Expense Categories", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "expense_categories",
+                        on_click=navigate_and_close("expense_categories")
+                    ),
+                    
+                    # User & Group Section
+                    ft.Container(
+                        content=ft.Text("USER & GROUP", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500),
+                        padding=ft.padding.only(left=10, top=15, bottom=5)
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.PEOPLE_ROUNDED, color=ft.Colors.GREEN_400),
+                        title=ft.Text("User Management", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "users",
+                        on_click=navigate_and_close("users")
+                    ),
+                    
+                    # Configuration & Policy Section
+                    ft.Container(
+                        content=ft.Text("CONFIGURATION & POLICY", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500),
+                        padding=ft.padding.only(left=10, top=15, bottom=5)
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.POLICY_ROUNDED, color=ft.Colors.PURPLE_400),
+                        title=ft.Text("Policy Rules", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "policy_rules",
+                        on_click=navigate_and_close("policy_rules")
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.CURRENCY_EXCHANGE_ROUNDED, color=ft.Colors.CYAN_400),
+                        title=ft.Text("Currency Rates", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "currency_rates",
+                        on_click=navigate_and_close("currency_rates")
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.INTEGRATION_INSTRUCTIONS_ROUNDED, color=ft.Colors.PINK_400),
+                        title=ft.Text("Accounting Integration", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "accounting_integration",
+                        on_click=navigate_and_close("accounting_integration")
+                    ),
+                    
+                    # Reporting & Analytics Section
+                    ft.Container(
+                        content=ft.Text("REPORTING & ANALYTICS", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_500),
+                        padding=ft.padding.only(left=10, top=15, bottom=5)
+                    ),
+                    ft.ListTile(
+                        leading=ft.Icon(ft.Icons.HISTORY_ROUNDED, color=ft.Colors.AMBER_400),
+                        title=ft.Text("Activity Logs", color=ft.Colors.WHITE, size=14),
+                        selected=self.current_route == "logs",
+                        on_click=navigate_and_close("logs")
+                    ),
+                ], spacing=0, tight=True, scroll=ft.ScrollMode.AUTO),
+                width=320,
+                height=500
+            ),
+            bgcolor="#2D2D30",
+            actions=[
+                ft.TextButton(
+                    "Close",
+                    on_click=lambda e: self.page.close(nav_menu)
+                )
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        )
+        
+        self.page.open(nav_menu)
+
+    
     def handle_navigation(self, route: str):
         """Handle navigation between admin pages"""
         self.current_route = route
         self.content_area.content = self.get_page_content(route)
-        
-        # Rebuild sidebar with updated current route
-        self.sidebar = AdminSidebar(
-            self.page,
-            self.current_route,
-            self.handle_navigation
-        )
-        self.sidebar_container.content = self.sidebar.build()
-        
-        # Auto-hide sidebar on mobile after navigation
-        if self.page.width <= 768:
-            self.sidebar_container.visible = False
-        
         self.page.update()
     
     def get_page_content(self, route: str):
@@ -190,14 +265,17 @@ class AdminMainLayout:
                         content=ft.Column([
                             ft.Text(
                                 f"Welcome, {self.admin_data.get('full_name', 'System Administrator')}",
-                                size=24,
+                                size=20,
                                 weight=ft.FontWeight.BOLD,
-                                color=ft.Colors.WHITE
+                                color=ft.Colors.WHITE,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                                max_lines=1
                             ),
                             ft.Text(
                                 "System Administration Dashboard",
-                                size=14,
-                                color=ft.Colors.WHITE70
+                                size=13,
+                                color=ft.Colors.WHITE70,
+                                overflow=ft.TextOverflow.ELLIPSIS
                             ),
                         ], spacing=4),
                         col={"xs": 12, "sm": 12, "md": 12, "lg": 12}
@@ -234,6 +312,14 @@ class AdminMainLayout:
         
         elif route == "accounting_integration":
             page = AdminAccountingIntegrationPage(self.page, self.state, self.handle_navigation)
+            return page.build()
+        
+        elif route == "all_expenses":
+            page = AdminAllExpensesPage(self.page, self.state, self.handle_navigation)
+            return page.build()
+        
+        elif route == "all_accounts":
+            page = AdminAllAccountsPage(self.page, self.state, self.handle_navigation)
             return page.build()
         
         else:
