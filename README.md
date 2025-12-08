@@ -244,6 +244,7 @@ Comprehensive documentation is available in the `docs/` folder:
 | `08_RISKS_CONSTRAINTS.md` | Risk assessment and roadmap |
 | `09_INDIVIDUAL_REFLECTION.md` | Team reflections |
 | `DATABASE_SCHEMA_ACTUAL.md` | Detailed database schema |
+| `FINAL REPORT_INFOASSUR` | Information Assurance Documentation and Final Proj |
 
 ---
 
@@ -254,8 +255,8 @@ Comprehensive documentation is available in the `docs/` folder:
 | Role | Member |
 |------|--------|
 | **Product Lead & Lead Developer** | Reynaldo Reyes (Reylan25) |
-| **Data & Integration Engineer** | Itscrl |
-| **UI/UX & QA Lead** | rogxyz-14 |
+| **Data & Integration Engineer** | Carl James Poopalaretnam (Itscrl) |
+| **UI/UX & QA Lead** | Roger Regalado (rogxyz-14) |
 
 ### Contributing Guidelines
 
