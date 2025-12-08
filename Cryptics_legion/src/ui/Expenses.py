@@ -4,6 +4,7 @@ from datetime import datetime
 from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
+from components.notification import NotificationCenter
 
 
 def get_clearbit_logo(domain: str) -> str:
@@ -2437,6 +2438,11 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
     # We need to build the content directly
     theme = get_theme()
     
+    # Create notification center and store in state
+    if "notification_center" not in state:
+        state["notification_center"] = NotificationCenter(page, theme)
+    notification_center = state["notification_center"]
+    
     # Get user profile for avatar and currency
     user_profile = db.get_user_profile(state["user_id"])
     first_name = user_profile.get("firstName", "User") if user_profile else "User"
@@ -2459,11 +2465,7 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 ),
                 ft.Row(
                     controls=[
-                        ft.IconButton(
-                            icon=ft.Icons.NOTIFICATIONS_NONE_ROUNDED,
-                            icon_color=theme.text_primary,
-                            icon_size=22,
-                        ),
+                        notification_center.create_bell_icon(),
                         ft.Container(
                             content=user_avatar,
                             on_click=lambda e: show_profile(),

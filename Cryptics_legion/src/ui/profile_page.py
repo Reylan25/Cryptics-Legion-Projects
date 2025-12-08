@@ -351,7 +351,7 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
 
 # ============ NEW: Content builder for flash-free navigation ============
 def build_profile_content(page: ft.Page, state: dict, toast, 
-                           go_back, logout_callback, show_account_settings, refresh_app):
+                           go_back, logout_callback, show_account_settings, refresh_app, show_privacy=None):
     """
     Builds and returns profile page content WITHOUT calling page.clean() or page.add().
     """
@@ -481,6 +481,9 @@ def build_profile_content(page: ft.Page, state: dict, toast,
         controls=[
             menu_item(ft.Icons.SETTINGS, "Account Settings", "Manage your account", 
                       lambda e: show_account_settings() if show_account_settings else None),
+            ft.Container(height=8),
+            menu_item(ft.Icons.SHIELD_OUTLINED, "Personal data & Privacy", "Privacy policy and data management",
+                      lambda e: show_privacy() if show_privacy else None),
             ft.Container(height=8),
             menu_item(ft.Icons.NOTIFICATIONS, "Notifications", "Manage alerts"),
             ft.Container(height=8),

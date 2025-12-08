@@ -24,6 +24,7 @@ from ui.account_settings_page import build_account_settings_content
 from ui.add_expense_page import build_add_expense_content
 from ui.all_expenses_page import build_all_expenses_content
 from ui.exchange_rates_page import build_exchange_rates_content
+from ui.privacy_page import build_privacy_content
 from ui.passcode_lock_page import create_passcode_setup, create_passcode_verify
 from utils.statistics import create_charts_view
 
@@ -160,12 +161,17 @@ def main(page: ft.Page):
     def show_profile():
         navigate_to("profile", lambda: build_profile_content(
             page, state, toast, show_home, do_logout, 
-            show_account_settings, refresh_current_view
+            show_account_settings, refresh_current_view, show_privacy
         ))
     
     def show_account_settings():
         navigate_to("account_settings", lambda: build_account_settings_content(
             page, state, toast, show_profile
+        ))
+    
+    def show_privacy():
+        navigate_to("privacy", lambda: build_privacy_content(
+            page, state, toast, show_profile, do_logout
         ))
     
     def show_add_expense():
@@ -246,6 +252,7 @@ def main(page: ft.Page):
             "statistics": show_statistics,
             "profile": show_profile,
             "account_settings": show_account_settings,
+            "privacy": show_privacy,
             "add_expense": show_add_expense,
         }
         current = state.get("current_view", "login")

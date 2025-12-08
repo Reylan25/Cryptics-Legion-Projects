@@ -348,7 +348,7 @@ class NotificationCenter:
         """Create the notification bell icon with badge."""
         unread_count = NotificationHistory.get_unread_count()
         
-        # Badge for unread count
+        # Badge for unread count with pulsing animation
         self.badge = ft.Container(
             content=ft.Text(
                 str(unread_count) if unread_count > 0 else "",
@@ -362,17 +362,32 @@ class NotificationCenter:
             bgcolor="#EF4444",
             alignment=ft.alignment.center,
             visible=unread_count > 0,
-            top=0,
-            right=0,
+            top=-2,
+            right=-2,
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=8,
+                color="#EF444460",
+                offset=ft.Offset(0, 2),
+            ),
         )
         
-        # Bell icon button
+        # Bell icon button with hover effect
         bell_icon = ft.IconButton(
             icon=ft.Icons.NOTIFICATIONS_OUTLINED,
+            selected_icon=ft.Icons.NOTIFICATIONS_ROUNDED,
             icon_size=24,
             icon_color=self.theme.text_secondary,
+            selected_icon_color=self.theme.accent_primary,
             on_click=self._toggle_panel,
             tooltip="Notifications",
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(radius=12),
+                overlay_color={
+                    ft.ControlState.HOVERED: f"{self.theme.accent_primary}15",
+                    ft.ControlState.PRESSED: f"{self.theme.accent_primary}25",
+                },
+            ),
         )
         
         # Stack to show badge over icon
@@ -419,14 +434,14 @@ class NotificationCenter:
                 ft.Container(
                     content=ft.Column(
                         controls=[
-                            ft.Icon(ft.Icons.NOTIFICATIONS_OFF_OUTLINED, size=64, color=self.theme.text_muted),
-                            ft.Text("No notifications yet", size=16, color=self.theme.text_muted, weight=ft.FontWeight.W_500),
-                            ft.Text("You're all caught up!", size=12, color=self.theme.text_muted),
+                            ft.Icon(ft.Icons.NOTIFICATIONS_OFF_OUTLINED, size=48, color=self.theme.text_muted),
+                            ft.Text("No notifications yet", size=14, color=self.theme.text_muted, weight=ft.FontWeight.W_500),
+                            ft.Text("You're all caught up!", size=11, color=self.theme.text_muted),
                         ],
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=12,
+                        spacing=8,
                     ),
-                    padding=40,
+                    padding=30,
                     alignment=ft.alignment.center,
                 )
             )
@@ -434,7 +449,10 @@ class NotificationCenter:
             for notif in notifications:
                 notification_items.append(self._create_notification_item(notif))
         
-        # Create panel
+        # Create panel - responsive sizing for mobile
+        panel_width = min(self.page.width - 40, 380) if self.page.width else 380
+        panel_height = min(self.page.height - 100, 500) if self.page.height else 500
+        
         self.notification_panel = ft.Container(
             content=ft.Column(
                 controls=[
@@ -444,7 +462,7 @@ class NotificationCenter:
                             controls=[
                                 ft.Text(
                                     "Notifications",
-                                    size=20,
+                                    size=18,
                                     weight=ft.FontWeight.BOLD,
                                     color=self.theme.text_primary,
                                 ),
@@ -453,7 +471,10 @@ class NotificationCenter:
                                         ft.TextButton(
                                             "Clear All",
                                             on_click=self._clear_all,
-                                            style=ft.ButtonStyle(color=self.theme.text_secondary),
+                                            style=ft.ButtonStyle(
+                                                color=self.theme.text_secondary,
+                                                padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                                            ),
                                         ),
                                         ft.IconButton(
                                             icon=ft.Icons.CLOSE,
@@ -467,7 +488,7 @@ class NotificationCenter:
                             ],
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
-                        padding=ft.padding.only(left=20, right=8, top=16, bottom=12),
+                        padding=ft.padding.only(left=16, right=4, top=12, bottom=8),
                         border=ft.border.only(bottom=ft.BorderSide(1, self.theme.border_primary)),
                     ),
                     # Notification list
@@ -482,8 +503,8 @@ class NotificationCenter:
                 ],
                 spacing=0,
             ),
-            width=380,
-            height=500,
+            width=panel_width,
+            height=panel_height,
             bgcolor=self.theme.bg_secondary,
             border_radius=16,
             shadow=ft.BoxShadow(
@@ -563,10 +584,10 @@ class NotificationCenter:
                 controls=[
                     # Icon
                     ft.Container(
-                        content=ft.Icon(icon, size=20, color=color),
-                        width=40,
-                        height=40,
-                        border_radius=20,
+                        content=ft.Icon(icon, size=18, color=color),
+                        width=36,
+                        height=36,
+                        border_radius=18,
                         bgcolor=f"{color}20",
                         alignment=ft.alignment.center,
                     ),
@@ -575,20 +596,20 @@ class NotificationCenter:
                         controls=[
                             ft.Text(
                                 notif["title"],
-                                size=14,
+                                size=13,
                                 weight=ft.FontWeight.BOLD,
                                 color=self.theme.text_primary,
                             ),
                             ft.Text(
                                 notif["message"],
-                                size=12,
+                                size=11,
                                 color=self.theme.text_secondary,
                                 max_lines=2,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                             ),
                             ft.Text(
                                 time_str,
-                                size=11,
+                                size=10,
                                 color=self.theme.text_muted,
                             ),
                         ],
@@ -596,9 +617,9 @@ class NotificationCenter:
                         expand=True,
                     ),
                 ],
-                spacing=12,
+                spacing=10,
             ),
-            padding=16,
+            padding=12,
             border=ft.border.only(bottom=ft.BorderSide(1, self.theme.border_primary)),
             ink=True,
             on_click=lambda e: None,  # Could add detail view here

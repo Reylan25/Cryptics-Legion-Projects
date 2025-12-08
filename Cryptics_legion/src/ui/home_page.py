@@ -6,6 +6,7 @@ from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
 from utils.currency import format_currency, format_currency_short, get_currency_from_user_profile, get_currency_symbol
 from components.notification import NotificationCenter
+from components.enhanced_icons import EnhancedIcon, CategoryIcon, EnhancedIconButton
 import random
 import math
 
@@ -531,7 +532,7 @@ def create_expense_item(brand_text: str, category: str, date: str, amount: float
     if brand_info:
         # Check if we have a logo URL
         if "logo" in brand_info and brand_info["logo"]:
-            # Clean white background for brand logos
+            # Enhanced white background for brand logos with shadow
             icon_container = ft.Container(
                 content=ft.Container(
                     content=ft.Image(
@@ -557,15 +558,16 @@ def create_expense_item(brand_text: str, category: str, date: str, amount: float
                 height=46,
                 border_radius=12,
                 bgcolor="#FFFFFF",
-                alignment=ft.alignment.center,
                 shadow=ft.BoxShadow(
                     spread_radius=0,
                     blur_radius=8,
-                    color="#00000020",
                     offset=ft.Offset(0, 2),
+                    color="#00000015",
                 ),
+                alignment=ft.alignment.center,
             )
         else:
+            # Enhanced branded icon with shadow
             icon_container = ft.Container(
                 content=ft.Text(
                     brand_info["icon"],
@@ -579,21 +581,19 @@ def create_expense_item(brand_text: str, category: str, date: str, amount: float
                 border_radius=14,
                 bgcolor=brand_info["bg"],
                 alignment=ft.alignment.center,
+                shadow=ft.BoxShadow(
+                    spread_radius=0,
+                    blur_radius=8,
+                    offset=ft.Offset(0, 2),
+                    color="#00000020",
+                ),
             )
     else:
-        # Use category fallback
-        cat_info = get_category_fallback(category)
-        icon_container = ft.Container(
-            content=ft.Text(
-                cat_info["icon"],
-                size=20,
-                text_align=ft.TextAlign.CENTER,
-            ),
-            width=46,
-            height=46,
-            border_radius=14,
-            bgcolor=cat_info["bg"],
-            alignment=ft.alignment.center,
+        # Use CategoryIcon for category fallback
+        icon_container = CategoryIcon.create(
+            category=category,
+            size=46,
+            theme=theme,
         )
     
     # Amount badge with pill shape
@@ -882,18 +882,19 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
             padding=ft.padding.symmetric(vertical=20),
         )
         
-        # Tip of the day card with gradient accent
+        # Tip of the day card with enhanced icon
         tip_card = ft.Container(
             content=ft.Row(
                 controls=[
-                    # Tip icon
-                    ft.Container(
-                        content=ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, color="#FBBF24", size=20),
-                        width=40,
-                        height=40,
+                    # Enhanced tip icon with gradient
+                    EnhancedIcon.create(
+                        icon=ft.Icons.LIGHTBULB_ROUNDED,
+                        size=22,
+                        color="#FFFFFF",
+                        gradient=["#FCD34D", "#F59E0B"],
                         border_radius=10,
-                        bgcolor="#FBBF2420",
-                        alignment=ft.alignment.center,
+                        padding=9,
+                        shadow=True,
                     ),
                     ft.Container(width=12),
                     # Tip content
@@ -911,7 +912,11 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
                         spacing=2,
                         expand=True,
                     ),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.text_muted, size=18),
+                    EnhancedIcon.create(
+                        icon=ft.Icons.CHEVRON_RIGHT_ROUNDED,
+                        size=18,
+                        color=theme.text_muted,
+                    ),
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
@@ -947,7 +952,11 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
                         content=ft.Row(
                             controls=[
                                 ft.Text("See all", size=13, color=theme.accent_primary, weight=ft.FontWeight.W_500),
-                                ft.Icon(ft.Icons.ARROW_FORWARD_IOS, color=theme.accent_primary, size=12),
+                                EnhancedIcon.create(
+                                    icon=ft.Icons.ARROW_FORWARD_IOS_ROUNDED,
+                                    size=12,
+                                    color=theme.accent_primary,
+                                ),
                             ],
                             spacing=4,
                         ),

@@ -3,6 +3,7 @@ import flet as ft
 from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
+from components.notification import NotificationCenter
 from datetime import datetime, timedelta
 from utils.statistics import (
     get_expense_summary_by_period,
@@ -824,6 +825,12 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     """
     theme = get_theme()
     user_id = state["user_id"]
+    
+    # Create notification center and store in state
+    if "notification_center" not in state:
+        state["notification_center"] = NotificationCenter(page, theme)
+    notification_center = state["notification_center"]
+    
     user_profile = db.get_user_profile(user_id)
     user_currency = get_currency_from_user_profile(user_profile)
     
@@ -860,11 +867,7 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
                             tooltip="Exchange Rates",
                             on_click=lambda e: show_exchange_rates(),
                         ),
-                        ft.IconButton(
-                            icon=ft.Icons.NOTIFICATIONS_NONE_ROUNDED,
-                            icon_color=theme.text_primary,
-                            icon_size=22,
-                        ),
+                        notification_center.create_bell_icon(),
                         ft.Container(
                             content=user_avatar,
                             on_click=lambda e: show_profile() if show_profile else None,

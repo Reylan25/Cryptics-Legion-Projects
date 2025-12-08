@@ -25,6 +25,9 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
     # UI component references for cross-function access
     result_display = {"result_text": None, "rate_info": None}
     
+    # Main container reference for updating
+    main_container = ft.Container(expand=True)
+    
     def refresh_rates(e=None):
         """Refresh exchange rates from API."""
         toast("Refreshing exchange rates...", theme.accent_primary)
@@ -32,14 +35,16 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
         if success:
             toast("Exchange rates updated!", "#10B981")
             # Refresh the page
-            build_view()
+            main_container.content = build_view()
+            page.update()
         else:
             toast("Failed to fetch rates. Using cached data.", "#EF4444")
     
     def update_base_currency(currency: str):
         """Update base currency and refresh display."""
         base_currency["value"] = currency
-        build_view()
+        main_container.content = build_view()
+        page.update()
     
     def show_currency_picker(e, callback):
         """Show currency selection dialog."""
@@ -305,6 +310,18 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
             on_submit=convert_currency_interactive,
         )
         
+        def update_from_currency(code):
+            """Update from currency in converter."""
+            base_currency["value"] = code
+            main_container.content = build_view()
+            page.update()
+        
+        def update_to_currency(code):
+            """Update to currency in converter."""
+            target_currency["value"] = code
+            main_container.content = build_view()
+            page.update()
+        
         from_currency_btn = ft.Container(
             content=ft.Row(
                 controls=[
@@ -327,7 +344,7 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
             bgcolor=theme.bg_field,
             border_radius=10,
             padding=12,
-            on_click=lambda e: show_currency_picker(e, lambda c: (base_currency.update({"value": c}), page.update())),
+            on_click=lambda e: show_currency_picker(e, lambda c: update_from_currency(c)),
             ink=True,
         )
         
@@ -353,7 +370,7 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
             bgcolor=theme.bg_field,
             border_radius=10,
             padding=12,
-            on_click=lambda e: show_currency_picker(e, lambda c: (target_currency.update({"value": c}), page.update())),
+            on_click=lambda e: show_currency_picker(e, lambda c: update_to_currency(c)),
             ink=True,
         )
         
@@ -488,5 +505,6 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
         
         return main_content
     
-    # Build and return initial content
-    return build_view()
+    # Build initial content and set it
+    main_container.content = build_view()
+    return main_container
