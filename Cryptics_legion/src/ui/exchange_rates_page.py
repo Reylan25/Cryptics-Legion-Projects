@@ -22,6 +22,9 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
     amount_to_convert = {"value": "1"}
     target_currency = {"value": "PHP"}
     
+    # UI component references for cross-function access
+    result_display = {"result_text": None, "rate_info": None}
+    
     def refresh_rates(e=None):
         """Refresh exchange rates from API."""
         toast("Refreshing exchange rates...", theme.accent_primary)
@@ -76,24 +79,51 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
     
     def convert_currency_interactive(e=None):
         """Perform currency conversion."""
+        # Validate amount input
+        if not amount_to_convert["value"] or str(amount_to_convert["value"]).strip() == "":
+            if result_display["result_text"]:
+                result_display["result_text"].value = "Amount cannot be empty"
+            if result_display["rate_info"]:
+                result_display["rate_info"].value = ""
+            page.update()
+            toast("Please enter an amount", "#EF4444")
+            return
+        
         try:
-            amount = float(amount_to_convert["value"])
+            amount_str = str(amount_to_convert["value"]).strip().replace(",", "")
+            amount = float(amount_str)
+            
+            if amount <= 0:
+                if result_display["result_text"]:
+                    result_display["result_text"].value = "Amount must be greater than 0"
+                if result_display["rate_info"]:
+                    result_display["rate_info"].value = ""
+                page.update()
+                toast("Amount must be greater than 0", "#EF4444")
+                return
+            
             from_curr = base_currency["value"]
             to_curr = target_currency["value"]
             
             converted = api.convert_currency(amount, from_curr, to_curr)
             
-            result_text.value = f"{get_currency_symbol(to_curr)}{converted:,.2f}"
-            rate = api.get_exchange_rate(from_curr, to_curr)
-            rate_info.value = f"1 {from_curr} = {rate:.4f} {to_curr}"
+            # Use the stored references
+            if result_display["result_text"]:
+                result_display["result_text"].value = f"{get_currency_symbol(to_curr)}{converted:,.2f}"
+            if result_display["rate_info"]:
+                rate = api.get_exchange_rate(from_curr, to_curr)
+                result_display["rate_info"].value = f"1 {from_curr} = {rate:.4f} {to_curr}"
             page.update()
         except ValueError:
-            toast("Please enter a valid amount", "#EF4444")
+            if result_display["result_text"]:
+                result_display["result_text"].value = "Please enter a valid numeric amount"
+            if result_display["rate_info"]:
+                result_display["rate_info"].value = ""
+            page.update()
+            toast("Please enter a valid numeric amount", "#EF4444")
     
     def build_view():
-        """Build and display the page content."""
-        page.clean()
-        
+        """Build and return the page content."""
         # Get exchange rates
         rates = api.get_all_rates_formatted(base_currency["value"])
         last_update = api.get_cache_age() or "Never"
@@ -343,6 +373,10 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
             text_align=ft.TextAlign.CENTER,
         )
         
+        # Store references for use in convert_currency_interactive
+        result_display["result_text"] = result_text
+        result_display["rate_info"] = rate_info
+        
         converter_section = ft.Container(
             content=ft.Column(
                 controls=[
@@ -452,10 +486,7 @@ def build_exchange_rates_content(page: ft.Page, state: dict, toast, go_back):
             ),
         )
         
-        page.add(main_content)
-        page.update()
+        return main_content
     
-    # Initial build
-    build_view()
-    
-    return lambda: build_view()
+    # Build and return initial content
+    return build_view()

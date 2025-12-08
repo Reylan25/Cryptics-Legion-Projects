@@ -1,10 +1,12 @@
 # src/ui/all_expenses_page.py
 import flet as ft
 from datetime import datetime
+import re
 from core import db
 from core.theme import get_theme
 from utils.brand_recognition import identify_brand, get_icon_for_category
 from utils.currency import format_currency, get_currency_from_user_profile, get_currency_symbol
+from components.notification import ImmersiveNotification
 
 
 def get_category_icon(category: str):
@@ -30,6 +32,41 @@ def format_date(date_str: str) -> str:
         return dt.strftime("%d %b %Y")
     except:
         return date_str
+
+
+def format_date_time(date_str: str) -> str:
+    """Format date string to display format with time."""
+    try:
+        # Handle both date-only and datetime formats
+        if " " in date_str:
+            dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            return dt.strftime("%d %b %Y at %I:%M %p")
+        else:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            return dt.strftime("%d %b %Y")
+    except:
+        return date_str
+
+
+def extract_conversion_info(description: str) -> dict:
+    """Extract currency conversion information from description."""
+    if not description:
+        return None
+    
+    # Pattern: [₱500.00 (PHP) = ¥1,069.52 (JPY) • Rate: 1 PHP = 2.139 JPY]
+    pattern = r'\[(.+?)\s+\(([A-Z]{3})\)\s+=\s+(.+?)\s+\(([A-Z]{3})\)\s+•\s+Rate:\s+1\s+([A-Z]{3})\s+=\s+([\d,.]+)\s+([A-Z]{3})\]'
+    match = re.search(pattern, description)
+    
+    if match:
+        return {
+            'from_amount': match.group(1),
+            'from_currency': match.group(2),
+            'to_amount': match.group(3),
+            'to_currency': match.group(4),
+            'rate': match.group(6),
+            'description_clean': re.sub(pattern, '', description).strip()
+        }
+    return None
 
 
 def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
@@ -95,7 +132,11 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
         def confirm_delete(e):
             def do_delete(e):
                 db.delete_expense_row(eid, state["user_id"])
-                toast("Expense deleted", "#2E7D32")
+                
+                # Show immersive notification
+                notif = ImmersiveNotification(page)
+                notif.show("Expense has been deleted successfully", "success", title="Deleted! 🗑️")
+                
                 dlg.open = False
                 page.update()
                 load_expenses()
@@ -178,31 +219,78 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
     def edit_expense(eid, amount, category, description, date):
         """Show edit expense dialog."""
         
+        # Error text components
+        amount_error = ft.Text("", size=11, color="#EF4444", visible=False)
+        category_error = ft.Text("", size=11, color="#EF4444", visible=False)
+        date_error = ft.Text("", size=11, color="#EF4444", visible=False)
+        
         amount_field = ft.TextField(value=str(amount), label="Amount", keyboard_type=ft.KeyboardType.NUMBER)
         category_field = ft.TextField(value=category, label="Category")
         desc_field = ft.TextField(value=description or "", label="Description")
         date_field = ft.TextField(value=date, label="Date (YYYY-MM-DD)")
         
         def save_edit(e):
-            try:
-                new_amount = float(amount_field.value)
-            except ValueError:
-                toast("Invalid amount", "#b71c1c")
+            # Clear previous errors
+            amount_error.visible = False
+            amount_error.value = ""
+            category_error.visible = False
+            category_error.value = ""
+            date_error.visible = False
+            date_error.value = ""
+            
+            has_error = False
+            
+            # Validate amount field
+            if not amount_field.value or not amount_field.value.strip():
+                amount_error.value = "⚠️ Amount cannot be empty"
+                amount_error.visible = True
+                has_error = True
+            else:
+                try:
+                    new_amount = float(amount_field.value.strip().replace(",", ""))
+                    if new_amount <= 0:
+                        amount_error.value = "⚠️ Amount must be greater than 0"
+                        amount_error.visible = True
+                        has_error = True
+                except ValueError:
+                    amount_error.value = "⚠️ Please enter a valid number"
+                    amount_error.visible = True
+                    has_error = True
+            
+            # Validate category field
+            if not category_field.value or not category_field.value.strip():
+                category_error.value = "⚠️ Category cannot be empty"
+                category_error.visible = True
+                has_error = True
+            
+            # Validate date field
+            if not date_field.value or not date_field.value.strip():
+                date_error.value = "⚠️ Date cannot be empty"
+                date_error.visible = True
+                has_error = True
+            
+            if has_error:
+                page.update()
                 return
+            
+            # Get validated amount
+            new_amount = float(amount_field.value.strip().replace(",", ""))
             
             ok = db.update_expense_row(
                 eid,
                 state["user_id"],
                 new_amount,
-                category_field.value,
-                desc_field.value,
-                date_field.value
+                category_field.value.strip(),
+                desc_field.value.strip() if desc_field.value else "",
+                date_field.value.strip()
             )
             
+            # Show immersive notification
+            notif = ImmersiveNotification(page)
             if ok:
-                toast("Expense updated", "#2E7D32")
+                notif.show("Your expense has been updated successfully", "success", title="Updated! ✏️")
             else:
-                toast("Update failed", "#b71c1c")
+                notif.show("Failed to update expense. Please try again", "error", title="Update Failed")
             
             dlg.open = False
             page.update()
@@ -217,10 +305,10 @@ def create_all_expenses_view(page: ft.Page, state: dict, toast, go_back):
             title=ft.Text("Edit Expense"),
             content=ft.Column(
                 controls=[
-                    amount_field,
-                    category_field,
+                    ft.Column([amount_field, amount_error], spacing=4),
+                    ft.Column([category_field, category_error], spacing=4),
                     desc_field,
-                    date_field,
+                    ft.Column([date_field, date_error], spacing=4),
                 ],
                 tight=True,
                 spacing=12,
@@ -380,6 +468,176 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
             currency_cache[acc_id] = acc[5] if acc else "PHP"
         return currency_cache[acc_id]
     
+    def show_expense_details(eid, amount, category, description, date_str, acc_id, expense_currency):
+        """Show detailed transaction information dialog."""
+        account_name = get_account_name(acc_id) or "Cash"
+        conversion_info = extract_conversion_info(description)
+        display_desc = conversion_info['description_clean'] if conversion_info else (description or category)
+        
+        # Generate recommendations based on expense
+        recommendations = []
+        if amount > 1000:
+            recommendations.append("💡 Consider creating a budget plan for this category")
+        if conversion_info:
+            recommendations.append("💱 Currency conversion applied - check if better rates are available")
+        if category.lower() in ['food', 'dining', 'restaurant']:
+            recommendations.append("🍽️ Track your dining expenses to identify saving opportunities")
+        if category.lower() in ['shopping', 'retail']:
+            recommendations.append("🛍️ Consider waiting for sales or using discount codes")
+        
+        # Build details dialog content - start with basic info
+        details_controls = [
+            # Transaction ID
+            ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.TAG, size=16, color=theme.accent_primary),
+                    ft.Text("Transaction ID:", size=12, color=theme.text_muted),
+                    ft.Text(f"#{eid}", size=12, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                ], spacing=6),
+                padding=10,
+                border_radius=8,
+                bgcolor="#1a1a2e",
+            ),
+            ft.Container(height=8),
+            # Date & Time
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.CALENDAR_TODAY, size=16, color=theme.accent_primary),
+                        ft.Text("Date & Time", size=12, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ], spacing=6),
+                    ft.Container(height=4),
+                    ft.Text(format_date_time(date_str), size=13, color=theme.text_secondary),
+                ], spacing=2),
+                padding=10,
+                border_radius=8,
+                bgcolor="#1a1a2e",
+            ),
+            ft.Container(height=8),
+        ]
+        
+        # Add conversion info section if available
+        if conversion_info:
+            details_controls.extend([
+                # Exchange Rate Info
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.CURRENCY_EXCHANGE, size=16, color="#10B981"),
+                            ft.Text("Currency Conversion", size=12, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                        ], spacing=6),
+                        ft.Container(height=8),
+                        ft.Column([
+                            ft.Row([
+                                ft.Text("Original:", size=11, color=theme.text_muted, width=70),
+                                ft.Text(f"{conversion_info['from_amount']} {conversion_info['from_currency']}", 
+                                       size=12, weight=ft.FontWeight.W_500, color=theme.text_primary),
+                            ]),
+                            ft.Row([
+                                ft.Text("Converted:", size=11, color=theme.text_muted, width=70),
+                                ft.Text(f"{conversion_info['to_amount']} {conversion_info['to_currency']}", 
+                                       size=12, weight=ft.FontWeight.W_500, color=theme.text_primary),
+                            ]),
+                            ft.Container(height=4),
+                            ft.Container(
+                                content=ft.Text(f"Rate: 1 {conversion_info['from_currency']} = {conversion_info['rate']} {conversion_info['to_currency']}",
+                                              size=11, color="#10B981", weight=ft.FontWeight.W_500),
+                                padding=6,
+                                border_radius=6,
+                                bgcolor="#10B98120",
+                            ),
+                        ], spacing=4),
+                    ], spacing=2),
+                    padding=10,
+                    border_radius=8,
+                    bgcolor="#1a1a2e",
+                ),
+                ft.Container(height=8),
+            ])
+        
+        # Continue with account info and other details
+        details_controls.extend([
+            # Account Info
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=16, color=theme.accent_primary),
+                        ft.Text("Account", size=12, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ], spacing=6),
+                    ft.Container(height=4),
+                    ft.Text(f"{account_name} ({expense_currency})", size=13, color=theme.text_secondary),
+                ], spacing=2),
+                padding=10,
+                border_radius=8,
+                bgcolor="#1a1a2e",
+            ),
+            ft.Container(height=8),
+            # Description
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.DESCRIPTION, size=16, color=theme.accent_primary),
+                        ft.Text("Description", size=12, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ], spacing=6),
+                    ft.Container(height=4),
+                    ft.Text(display_desc, size=13, color=theme.text_secondary),
+                ], spacing=2),
+                padding=10,
+                border_radius=8,
+                bgcolor="#1a1a2e",
+            ),
+        ])
+        
+        # Add recommendations section if available
+        if len(recommendations) > 0:
+            details_controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Container(height=8),
+                        ft.Row([
+                            ft.Icon(ft.Icons.LIGHTBULB, size=16, color="#F59E0B"),
+                            ft.Text("Recommendations", size=12, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                        ], spacing=6),
+                        ft.Container(height=8),
+                        ft.Column([
+                            ft.Text(rec, size=11, color=theme.text_secondary) for rec in recommendations
+                        ], spacing=6),
+                    ], spacing=2),
+                    padding=10,
+                    border_radius=8,
+                    bgcolor="#1a1a2e",
+                )
+            )
+        
+        # Create the scrollable column with all details
+        details_content = ft.Column(details_controls, spacing=0, scroll=ft.ScrollMode.AUTO)
+        
+        def close_dialog(e):
+            page.close(details_dialog)
+        
+        details_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.INFO_OUTLINE, color=theme.accent_primary, size=24),
+                ft.Text("Transaction Details", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+            ], spacing=8),
+            content=ft.Container(
+                content=details_content,
+                width=400,
+                height=500,
+            ),
+            bgcolor=theme.bg_primary,
+            actions=[
+                ft.TextButton(
+                    "Close",
+                    on_click=close_dialog,
+                    style=ft.ButtonStyle(color=theme.accent_primary),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        page.open(details_dialog)
+    
     def create_expense_card(expense):
         """Create an expense card with swipe to delete."""
         eid, uid, amount, category, description, date_str, acc_id = expense[:7]
@@ -394,34 +652,56 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
         expense_currency = get_account_currency(acc_id)
         currency_symbol = get_currency_symbol(expense_currency)
         
+        # Clean display name if conversion info exists
+        conversion_info = extract_conversion_info(description)
+        if conversion_info:
+            display_name = conversion_info['description_clean'] if conversion_info['description_clean'] else category
+        
         # Build subtitle text
         subtitle = f"{category} • {formatted_date}"
         
         return ft.Container(
             content=ft.Row([
-                # Icon
+                # Icon with gradient background
                 ft.Container(
-                    content=ft.Icon(icon, color="white", size=20),
-                    width=44,
-                    height=44,
-                    border_radius=12,
-                    bgcolor=icon_color,
+                    content=ft.Icon(icon, color="white", size=22),
+                    width=50,
+                    height=50,
+                    border_radius=14,
+                    gradient=ft.LinearGradient(
+                        begin=ft.alignment.top_left,
+                        end=ft.alignment.bottom_right,
+                        colors=[icon_color, f"{icon_color}CC"],
+                    ),
                     alignment=ft.alignment.center,
+                    shadow=ft.BoxShadow(
+                        spread_radius=0,
+                        blur_radius=8,
+                        color=f"{icon_color}40",
+                        offset=ft.Offset(0, 2),
+                    ),
                 ),
-                ft.Container(width=12),
+                ft.Container(width=14),
                 # Details - left side
                 ft.Column([
                     ft.Text(
                         display_name,
-                        size=14,
+                        size=15,
                         weight=ft.FontWeight.W_600,
                         color=theme.text_primary,
                         max_lines=1,
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
-                    ft.Text(subtitle, size=11, color=theme.text_muted),
-                ], spacing=3, expand=True),
-                # Amount and Account - right side (fixed width)
+                    ft.Row([
+                        ft.Text(category, size=11, color=theme.text_muted, weight=ft.FontWeight.W_500),
+                        ft.Container(
+                            content=ft.Text("•", size=11, color=theme.text_muted),
+                            margin=ft.margin.symmetric(horizontal=4),
+                        ),
+                        ft.Text(formatted_date, size=11, color=theme.text_muted),
+                    ], spacing=0, vertical_alignment=ft.CrossAxisAlignment.END),
+                ], spacing=4, expand=True),
+                # Amount and Account - right side
                 ft.Column([
                     ft.Text(
                         f"-{currency_symbol}{amount:,.2f}",
@@ -437,21 +717,37 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
                             color=theme.accent_primary,
                             weight=ft.FontWeight.W_500,
                         ),
-                    ], spacing=3, tight=True) if account_name else ft.Container(),
-                ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.END, width=100),
-                # Delete button
-                ft.IconButton(
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    icon_color="#EF4444",
-                    icon_size=20,
-                    tooltip="Delete",
-                    on_click=lambda e, eid=eid, amt=amount, desc=display_name: delete_expense(eid, amt, desc),
-                ),
+                    ], spacing=3, tight=True) if account_name else ft.Container(height=16),
+                ], spacing=3, horizontal_alignment=ft.CrossAxisAlignment.END),
+                ft.Container(width=8),
+                # Action buttons
+                ft.Column([
+                    ft.IconButton(
+                        icon=ft.Icons.DELETE_OUTLINE,
+                        icon_color="#EF4444",
+                        icon_size=18,
+                        tooltip="Delete",
+                        on_click=lambda e, eid=eid, amt=amount, desc=display_name: delete_expense(eid, amt, desc),
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.VISIBILITY_OUTLINED,
+                        icon_color=theme.accent_primary,
+                        icon_size=18,
+                        tooltip="See Details",
+                        on_click=lambda e, i=eid, a=amount, c=category, d=description, dt=date_str, ac=acc_id, cur=expense_currency: show_expense_details(i, a, c, d, dt, ac, cur),
+                    ),
+                ], spacing=0),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=ft.padding.symmetric(horizontal=12, vertical=10),
-            border_radius=14,
+            padding=ft.padding.symmetric(horizontal=14, vertical=12),
+            border_radius=16,
             bgcolor=theme.bg_card,
             border=ft.border.all(1, theme.border_primary),
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=10,
+                color="#00000020",
+                offset=ft.Offset(0, 2),
+            ),
         )
     
     # Build expenses list
@@ -462,12 +758,37 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
         expenses_list.controls.append(
             ft.Container(
                 content=ft.Column([
-                    ft.Icon(ft.Icons.RECEIPT_LONG, color=theme.text_muted, size=64),
-                    ft.Container(height=16),
-                    ft.Text("No expenses yet", size=16, color=theme.text_muted),
-                    ft.Text("Start tracking your spending!", size=13, color=theme.text_muted),
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
-                padding=60,
+                    ft.Container(
+                        content=ft.Icon(ft.Icons.RECEIPT_LONG_OUTLINED, color=theme.accent_primary, size=72),
+                        width=120,
+                        height=120,
+                        border_radius=60,
+                        bgcolor=f"{theme.accent_primary}15",
+                        alignment=ft.alignment.center,
+                    ),
+                    ft.Container(height=20),
+                    ft.Text(
+                        "No expenses yet",
+                        size=18,
+                        weight=ft.FontWeight.W_600,
+                        color=theme.text_primary,
+                    ),
+                    ft.Container(height=4),
+                    ft.Text(
+                        "Start tracking your spending!",
+                        size=14,
+                        color=theme.text_muted,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                    ft.Container(height=8),
+                    ft.Text(
+                        "Tap the + button to add your first expense",
+                        size=12,
+                        color=theme.text_muted,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
+                padding=80,
                 alignment=ft.alignment.center,
             )
         )
@@ -493,76 +814,133 @@ def build_all_expenses_content(page: ft.Page, state: dict, toast, go_back, show_
         ft.Container(
             content=ft.Row([
                 ft.Container(
-                    content=ft.Icon(ft.Icons.TRENDING_DOWN, color="white", size=16),
-                    width=32,
-                    height=32,
-                    border_radius=8,
-                    bgcolor="#EF4444",
+                    content=ft.Icon(ft.Icons.TRENDING_DOWN, color="white", size=20),
+                    width=44,
+                    height=44,
+                    border_radius=12,
+                    gradient=ft.LinearGradient(
+                        begin=ft.alignment.top_left,
+                        end=ft.alignment.bottom_right,
+                        colors=["#EF4444", "#DC2626"],
+                    ),
                     alignment=ft.alignment.center,
+                    shadow=ft.BoxShadow(
+                        spread_radius=0,
+                        blur_radius=8,
+                        color="#EF444440",
+                        offset=ft.Offset(0, 2),
+                    ),
                 ),
-                ft.Container(width=8),
+                ft.Container(width=12),
                 ft.Column([
-                    ft.Text("Total Spent", size=10, color=theme.text_muted),
+                    ft.Text(
+                        "Total Spent",
+                        size=11,
+                        color=theme.text_muted,
+                        weight=ft.FontWeight.W_500,
+                    ),
                     ft.Text(
                         f"₱{total_spent:,.0f}",
-                        size=14,
+                        size=18,
                         weight=ft.FontWeight.BOLD,
                         color="#EF4444",
                     ),
-                ], spacing=1, expand=True),
+                ], spacing=2, expand=True),
             ], spacing=0),
             bgcolor=theme.bg_card,
-            border_radius=14,
-            padding=12,
+            border_radius=16,
+            padding=14,
             border=ft.border.all(1, theme.border_primary),
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=10,
+                color="#00000015",
+                offset=ft.Offset(0, 2),
+            ),
             expand=True,
         ),
-        ft.Container(width=8),
+        ft.Container(width=10),
         # Transaction Count Card
         ft.Container(
             content=ft.Row([
                 ft.Container(
-                    content=ft.Icon(ft.Icons.RECEIPT_LONG, color="white", size=16),
-                    width=32,
-                    height=32,
-                    border_radius=8,
-                    bgcolor=theme.accent_primary,
+                    content=ft.Icon(ft.Icons.RECEIPT_LONG, color="white", size=20),
+                    width=44,
+                    height=44,
+                    border_radius=12,
+                    gradient=ft.LinearGradient(
+                        begin=ft.alignment.top_left,
+                        end=ft.alignment.bottom_right,
+                        colors=[theme.accent_primary, f"{theme.accent_primary}DD"],
+                    ),
                     alignment=ft.alignment.center,
+                    shadow=ft.BoxShadow(
+                        spread_radius=0,
+                        blur_radius=8,
+                        color=f"{theme.accent_primary}40",
+                        offset=ft.Offset(0, 2),
+                    ),
                 ),
-                ft.Container(width=8),
+                ft.Container(width=12),
                 ft.Column([
-                    ft.Text("Transactions", size=10, color=theme.text_muted),
+                    ft.Text(
+                        "Transactions",
+                        size=11,
+                        color=theme.text_muted,
+                        weight=ft.FontWeight.W_500,
+                    ),
                     ft.Text(
                         str(expense_count),
-                        size=14,
+                        size=18,
                         weight=ft.FontWeight.BOLD,
                         color=theme.text_primary,
                     ),
-                ], spacing=1, expand=True),
+                ], spacing=2, expand=True),
             ], spacing=0),
             bgcolor=theme.bg_card,
-            border_radius=14,
-            padding=12,
+            border_radius=16,
+            padding=14,
             border=ft.border.all(1, theme.border_primary),
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=10,
+                color="#00000015",
+                offset=ft.Offset(0, 2),
+            ),
             expand=True,
         ),
     ])
     
     # Section header
     section_header = ft.Row([
-        ft.Text("Transactions", size=16, weight=ft.FontWeight.W_600, color=theme.text_primary),
-        ft.Text(f"{expense_count} items", size=13, color=theme.text_muted),
+        ft.Text(
+            "Transactions",
+            size=17,
+            weight=ft.FontWeight.BOLD,
+            color=theme.text_primary,
+        ),
+        ft.Container(
+            content=ft.Text(
+                f"{expense_count} items",
+                size=12,
+                color=theme.text_muted,
+                weight=ft.FontWeight.W_500,
+            ),
+            padding=ft.padding.symmetric(horizontal=10, vertical=4),
+            border_radius=12,
+            bgcolor=f"{theme.text_muted}15",
+        ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
     
     # Main scrollable content
     scrollable_content = ft.Column([
         summary_row,
-        ft.Container(height=20),
+        ft.Container(height=24),
         section_header,
-        ft.Container(height=12),
+        ft.Container(height=14),
         expenses_list,
-        ft.Container(height=40),
-    ], scroll=ft.ScrollMode.AUTO, expand=True)
+        ft.Container(height=60),
+    ], scroll=ft.ScrollMode.AUTO, expand=True, spacing=0)
     
     return ft.Container(
         expand=True,

@@ -1,8 +1,10 @@
 # src/ui/account_settings_page.py
 import flet as ft
+import re
 from core import db
 from core.theme import get_theme
 from utils.currency import CURRENCY_CONFIGS, get_currency_symbol
+from components.notification import ImmersiveNotification
 
 
 def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
@@ -184,36 +186,61 @@ def create_account_settings_view(page: ft.Page, state: dict, toast, go_back):
             # Extract currency code from format "PHP (₱) - Philippine Peso"
             currency_code = currency_dropdown.value.split(" ")[0] if currency_dropdown.value else "PHP"
             
-            # Combine first and last name
+            # Collect and validate first name
             first_name = first_name_field.value.strip() if first_name_field.value else ""
+            if not first_name:
+                toast("First name cannot be empty", "#EF4444")
+                return
+            
+            # Collect and validate last name
             last_name = last_name_field.value.strip() if last_name_field.value else ""
+            if not last_name:
+                toast("Last name cannot be empty", "#EF4444")
+                return
+            
+            # Combine names
             full_name = f"{first_name} {last_name}".strip()
+            
+            # Collect email with validation
+            email = email_field.value.strip() if email_field.value else ""
+            if email:
+                # Basic email validation
+                import re
+                email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+                if not re.match(email_pattern, email):
+                    toast("Please enter a valid email address", "#EF4444")
+                    return
+            
+            # Collect phone with validation
+            phone = phone_field.value.strip() if phone_field.value else ""
+            if phone:
+                # Remove common phone formatting characters
+                phone_clean = re.sub(r'[\\s\\-\\(\\)\\+]', '', phone)
+                # Check if it contains only digits (after removing formatting)
+                if not phone_clean.isdigit() or len(phone_clean) < 10:
+                    toast("Please enter a valid phone number (at least 10 digits)", "#EF4444")
+                    return
             
             # Collect form data including photo
             form_data = {
                 "first_name": first_name,
                 "last_name": last_name,
                 "full_name": full_name,
-                "email": email_field.value or "",
-                "phone": phone_field.value or "",
+                "email": email,
+                "phone": phone,
                 "currency": currency_code,
                 "timezone": timezone_dropdown.value.split(" (")[0] if timezone_dropdown.value else "Asia/Manila",
                 "first_day": first_day_dropdown.value or "Monday",
                 "photo": photo_state.copy(),
             }
             
-            # Validate
-            if not first_name:
-                toast("Please enter your first name", "#b71c1c")
-                return
-            
-            if not last_name:
-                toast("Please enter your last name", "#b71c1c")
-                return
-            
             # Save to database
             saved = db.save_personal_details(state["user_id"], form_data)
             if saved:
+                # Show immersive success notification
+                notif = ImmersiveNotification(page)
+                notif.show("Your profile has been updated successfully", "success", title="Profile Saved! 👤")
+                
                 # Show success message below button
                 success_message.visible = True
                 page.update()

@@ -2,6 +2,7 @@
 import flet as ft
 from core import auth
 from core.theme import get_theme
+from components.notification import ImmersiveNotification
 
 
 def create_login_view(page: ft.Page, on_success, show_register, show_onboarding, toast, show_forgot_password=None):
@@ -116,14 +117,20 @@ def create_login_view(page: ft.Page, on_success, show_register, show_onboarding,
             password_field.value = ""
             login_btn.disabled = False
             login_btn.text = "Login"
-            toast("Welcome back! 🎉", "#2E7D32")
+            
+            # Show immersive welcome notification
+            notif = ImmersiveNotification(page)
+            notif.show(f"Welcome back! You're successfully logged in", "success", title="Login Successful! 🎉")
+            
             on_success(uid)
         else:
             login_btn.disabled = False
             login_btn.text = "Login"
             show_error("Invalid username or password. Please try again.")
-            # Shake effect simulation - show error prominently
-            toast("Login failed. Check your credentials.", "#b71c1c")
+            
+            # Show error notification
+            notif = ImmersiveNotification(page)
+            notif.show("Please check your username and password", "error", title="Login Failed")
 
     # Add on_submit handlers for Enter key to trigger login
     username_field.on_submit = do_login

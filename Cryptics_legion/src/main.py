@@ -149,7 +149,7 @@ def main(page: ft.Page):
     def show_statistics():
         navigate_to("statistics", lambda: build_statistics_content(
             page, state, toast, show_home, show_expenses, 
-            show_profile, show_add_expense
+            show_profile, show_add_expense, show_exchange_rates
         ))
     
     def show_exchange_rates():

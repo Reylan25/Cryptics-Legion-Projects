@@ -817,7 +817,7 @@ def create_statistics_view(page: ft.Page, state: dict, toast, go_back,
 
 # ============ NEW: Content builder for flash-free navigation ============
 def build_statistics_content(page: ft.Page, state: dict, toast, 
-                              go_back, show_expenses, show_profile, show_add_expense):
+                              go_back, show_expenses, show_profile, show_add_expense, show_exchange_rates):
     """
     Builds and returns statistics page content WITHOUT calling page.clean() or page.add().
     Enhanced with comprehensive statistics, pie charts, bar charts, and trend analysis.
@@ -837,15 +837,8 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     # Create avatar
     user_avatar = create_user_avatar(user_id, radius=22, theme=theme)
     
-    # Exchange rates navigation function
-    def show_exchange_rates():
-        """Navigate to exchange rates page."""
-        try:
-            from ui.exchange_rates_page import build_exchange_rates_content
-            page.controls.clear()
-            build_exchange_rates_content(page, state, toast, go_back)
-        except ImportError as e:
-            toast(f"Exchange rates feature not available: {e}", "#EF4444")
+    # Create avatar
+    user_avatar = create_user_avatar(user_id, radius=22, theme=theme)
     
     # Header
     header = ft.Container(

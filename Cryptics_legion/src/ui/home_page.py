@@ -5,6 +5,7 @@ from core import db
 from core.theme import get_theme
 from ui.nav_bar_buttom import create_page_with_nav
 from utils.currency import format_currency, format_currency_short, get_currency_from_user_profile, get_currency_symbol
+from components.notification import NotificationCenter
 import random
 import math
 
@@ -795,6 +796,11 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
         # Get current theme
         theme = get_theme()
         
+        # Create notification center and store in state
+        if "notification_center" not in state:
+            state["notification_center"] = NotificationCenter(page, theme)
+        notification_center = state["notification_center"]
+        
         # Get random tip
         tip = random.choice(TIPS)
         
@@ -1020,6 +1026,12 @@ def build_home_content(page: ft.Page, state: dict, toast,
     This is for flash-free navigation where main.py swaps container content.
     """
     theme = get_theme()
+    
+    # Create notification center and store in state
+    if "notification_center" not in state:
+        state["notification_center"] = NotificationCenter(page, theme)
+    notification_center = state["notification_center"]
+    
     expenses_list = ft.Column(spacing=4)
     
     def format_date(date_str: str) -> str:
@@ -1165,12 +1177,7 @@ def build_home_content(page: ft.Page, state: dict, toast,
                 ),
                 ft.Row(
                     controls=[
-                        ft.IconButton(
-                            icon=ft.Icons.NOTIFICATIONS_NONE_ROUNDED,
-                            icon_color=theme.text_primary,
-                            icon_size=22,
-                            style=ft.ButtonStyle(padding=8),
-                        ),
+                        notification_center.create_bell_icon(),
                         ft.Container(
                             content=ft.Column(
                                 controls=[

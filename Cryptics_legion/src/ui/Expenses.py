@@ -951,6 +951,10 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
         # Account type options
         account_types = ["Cash", "Savings", "Credit Card", "Debit Card", "E-Wallet", "Other"]
         
+        # Error text components
+        name_error = ft.Text("", size=11, color="#EF4444", visible=False)
+        initial_error = ft.Text("", size=11, color="#EF4444", visible=False)
+        
         def close_form(e):
             page.close(new_account_sheet)
         
@@ -965,18 +969,42 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
             page.update()
         
         def create_account(e):
+            # Clear previous errors
+            name_error.visible = False
+            name_error.value = ""
+            initial_error.visible = False
+            initial_error.value = ""
+            
             account_name = name_field.value
-            if not account_name:
-                toast("Please enter account name", "#EF4444")
+            if not account_name or not account_name.strip():
+                name_error.value = "⚠️ Account name is required"
+                name_error.visible = True
+                page.update()
                 return
             
             # Get form values
             account_number = bank_number_field.value or ""
             account_type = type_dropdown.value
+            
+            # Validate initial balance
+            if not initial_value_field.value or not initial_value_field.value.strip():
+                initial_error.value = "⚠️ Initial balance cannot be empty"
+                initial_error.visible = True
+                page.update()
+                return
+            
             try:
-                initial_balance = float(initial_value_field.value or 0)
+                initial_balance = float(initial_value_field.value.strip().replace(",", "").replace("₱", ""))
+                if initial_balance < 0:
+                    initial_error.value = "⚠️ Balance cannot be negative"
+                    initial_error.visible = True
+                    page.update()
+                    return
             except ValueError:
-                initial_balance = 0.0
+                initial_error.value = "⚠️ Please enter a valid number"
+                initial_error.visible = True
+                page.update()
+                return
             currency = currency_dropdown.value
             color = selected_color["value"]
             created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1142,13 +1170,13 @@ def create_expenses_view(page: ft.Page, state: dict, toast, show_home, show_wall
                         ),
                         ft.Container(height=20),
                         # Form fields
-                        name_field,
+                        ft.Column([name_field, name_error], spacing=4),
                         ft.Container(height=16),
                         bank_number_field,
                         ft.Container(height=16),
                         type_dropdown,
                         ft.Container(height=16),
-                        initial_value_field,
+                        ft.Column([initial_value_field, initial_error], spacing=4),
                         ft.Container(height=16),
                         currency_dropdown,
                         ft.Container(height=20),
@@ -2678,6 +2706,8 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
             name_field = ft.TextField(label="Account name", value=acc_name, border_color=theme.border_primary,
                 focused_border_color=theme.accent_primary, bgcolor=theme.bg_card, color=theme.text_primary,
                 label_style=ft.TextStyle(color=theme.text_secondary), border_radius=12)
+            
+            balance_error = ft.Text("", size=11, color="#EF4444", visible=False)
             balance_field = ft.TextField(label="Balance", value=str(acc_balance), border_color=theme.border_primary,
                 focused_border_color=theme.accent_primary, bgcolor=theme.bg_card, color=theme.text_primary,
                 label_style=ft.TextStyle(color=theme.text_secondary), border_radius=12, keyboard_type=ft.KeyboardType.NUMBER, prefix_text="₱ ")
@@ -2705,11 +2735,31 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             
             def save_changes(e):
+                # Clear previous errors
+                balance_error.visible = False
+                balance_error.value = ""
+                
                 new_name = name_field.value
+                
+                # Validate balance
+                if not balance_field.value or not balance_field.value.strip():
+                    balance_error.value = "⚠️ Balance cannot be empty"
+                    balance_error.visible = True
+                    page.update()
+                    return
+                
                 try:
-                    new_balance = float(balance_field.value or 0)
+                    new_balance = float(balance_field.value.strip().replace(",", "").replace("₱", ""))
+                    if new_balance < 0:
+                        balance_error.value = "⚠️ Balance cannot be negative"
+                        balance_error.visible = True
+                        page.update()
+                        return
                 except ValueError:
-                    new_balance = acc_balance
+                    balance_error.value = "⚠️ Please enter a valid number"
+                    balance_error.visible = True
+                    page.update()
+                    return
                 new_type = type_dropdown.value
                 new_currency = currency_dropdown.value
                 new_color = selected_color["value"]
@@ -2741,7 +2791,9 @@ def build_expenses_content(page: ft.Page, state: dict, toast,
                                          on_click=lambda e: page.close(edit_sheet))],
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Container(height=16),
-                        name_field, ft.Container(height=16), balance_field, ft.Container(height=16),
+                        name_field, ft.Container(height=16), 
+                        ft.Column([balance_field, balance_error], spacing=4),
+                        ft.Container(height=16),
                         type_dropdown, ft.Container(height=16), currency_dropdown, ft.Container(height=20),
                         ft.Text("Account color", size=14, color=theme.text_secondary),
                         ft.Container(height=12), color_row, ft.Container(height=24),

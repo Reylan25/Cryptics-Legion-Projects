@@ -2,6 +2,7 @@
 import flet as ft
 from core import auth
 from core.theme import get_theme
+from components.notification import ImmersiveNotification
 
 
 def create_forgot_password_view(page: ft.Page, on_back_to_login, toast):
@@ -286,14 +287,15 @@ def create_forgot_password_view(page: ft.Page, on_back_to_login, toast):
             action_btn.disabled = False
             page.update()
             
-            # Show toast and redirect immediately
-            toast("Password reset successfully! Redirecting...", "#2E7D32")
+            # Show immersive success notification
+            notif = ImmersiveNotification(page)
+            notif.show("Your password has been reset successfully", "success", title="Password Reset! 🔒")
             
             # Small delay using page timer
             import threading
             def redirect_after_delay():
                 import time
-                time.sleep(0.8)
+                time.sleep(1.5)
                 on_back_to_login()
             
             threading.Thread(target=redirect_after_delay, daemon=True).start()

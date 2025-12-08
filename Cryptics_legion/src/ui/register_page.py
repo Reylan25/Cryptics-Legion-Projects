@@ -2,6 +2,7 @@
 import flet as ft
 import re
 from core.theme import get_theme
+from components.notification import ImmersiveNotification
 
 
 def create_register_view(page: ft.Page, on_registered, show_login, toast, state=None):

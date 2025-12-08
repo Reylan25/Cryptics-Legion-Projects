@@ -5,6 +5,8 @@ from core import db
 from core.theme import get_theme
 from utils.brand_recognition import identify_brand, get_brand_suggestions
 from utils.currency import get_currency_symbol
+from utils.currency_exchange import get_exchange_api
+from components.notification import ImmersiveNotification
 
 
 # Category options
@@ -840,6 +842,9 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
     
     # ============ UI Components ============
     
+    # Error message displays
+    amount_error = ft.Text("", size=11, color="#EF4444", visible=False)
+    
     # Amount field
     amount_field = ft.TextField(
         hint_text="0.00",
@@ -852,6 +857,7 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         keyboard_type=ft.KeyboardType.NUMBER,
         content_padding=0,
         expand=True,
+        error_text=None,
     )
     
     # Description field with AI detection
@@ -1209,14 +1215,32 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
     
     # ============ Save Expense ============
     def save_expense(e):
+        # Clear previous errors
+        amount_error.visible = False
+        amount_error.value = ""
+        
+        # Validate amount
+        if not amount_field.value or not amount_field.value.strip():
+            amount_error.value = "⚠️ Amount cannot be empty"
+            amount_error.visible = True
+            toast("Amount cannot be empty", "#EF4444")
+            page.update()
+            return
+        
         try:
-            amount = float(amount_field.value.strip().replace(",", "")) if amount_field.value else 0
+            amount = float(amount_field.value.strip().replace(",", ""))
         except ValueError:
-            toast("Please enter a valid amount", "#EF4444")
+            amount_error.value = "⚠️ Please enter a valid number"
+            amount_error.visible = True
+            toast("Please enter a valid numeric amount", "#EF4444")
+            page.update()
             return
         
         if amount <= 0:
+            amount_error.value = "⚠️ Amount must be greater than 0"
+            amount_error.visible = True
             toast("Amount must be greater than 0", "#EF4444")
+            page.update()
             return
         
         description = description_field.value.strip() if description_field.value else ""
@@ -1228,8 +1252,40 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
             return
         
         acc_info = get_account_info(expense_state["selected_account_id"])
-        if acc_info and amount > acc_info[4]:
-            toast(f"Insufficient balance in {acc_info[1]}", "#EF4444")
+        if not acc_info:
+            toast("Account not found", "#EF4444")
+            return
+            
+        # Get currencies
+        expense_currency = expense_state["selected_currency_code"]  # Currency user entered amount in
+        account_currency = acc_info[5] if len(acc_info) > 5 else "PHP"  # Account's currency
+        
+        # Convert amount if currencies are different
+        converted_amount = amount
+        exchange_rate = 1.0
+        conversion_note = ""
+        
+        if expense_currency != account_currency:
+            # Get exchange rate and convert
+            api = get_exchange_api()
+            exchange_rate = api.get_exchange_rate(expense_currency, account_currency)
+            converted_amount = api.convert_currency(amount, expense_currency, account_currency)
+            
+            # Create conversion note for display
+            expense_symbol = get_currency_symbol(expense_currency)
+            account_symbol = get_currency_symbol(account_currency)
+            conversion_note = f"{expense_symbol}{amount:,.2f} ({expense_currency}) = {account_symbol}{converted_amount:,.2f} ({account_currency}) • Rate: 1 {expense_currency} = {exchange_rate:.4f} {account_currency}"
+            
+            # Update description to include conversion info
+            if description:
+                description = f"{description} [{conversion_note}]"
+            else:
+                description = f"[{conversion_note}]"
+        
+        # Check if account has enough balance (in account's currency)
+        if converted_amount > acc_info[4]:
+            acc_symbol = get_currency_symbol(account_currency)
+            toast(f"Insufficient balance in {acc_info[1]} ({acc_symbol}{acc_info[4]:,.2f})", "#EF4444")
             return
         
         expense_datetime = datetime.combine(
@@ -1240,19 +1296,34 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         
         category = expense_state.get("detected_category") or expense_state["category"]
         
+        # Save expense with converted amount (in account's currency)
         db.insert_expense(
             user_id=state["user_id"],
-            amount=amount,
+            amount=converted_amount,
             category=category,
             description=description,
             date_str=date_str,
             account_id=expense_state["selected_account_id"],
         )
         
-        acc_name = acc_info[1] if acc_info else "account"
-        acc_currency = acc_info[5] if acc_info else "PHP"
-        acc_symbol = get_currency_symbol(acc_currency)
-        toast(f"{acc_symbol}{amount:,.2f} deducted from {acc_name}", "#10B981")
+        acc_name = acc_info[1]
+        acc_symbol = get_currency_symbol(account_currency)
+        
+        # Show immersive success notification with conversion info
+        notif = ImmersiveNotification(page)
+        if expense_currency != account_currency:
+            expense_symbol = get_currency_symbol(expense_currency)
+            notif.show(
+                f"{expense_symbol}{amount:,.2f} → {acc_symbol}{converted_amount:,.2f} deducted from {acc_name}",
+                "success",
+                title="Expense Saved! 💰"
+            )
+        else:
+            notif.show(
+                f"{acc_symbol}{amount:,.2f} deducted from {acc_name}",
+                "success",
+                title="Expense Saved! 💰"
+            )
         
         if show_expenses:
             show_expenses()
@@ -1279,10 +1350,8 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         content=ft.Column([
             ft.Text("AMOUNT", size=10, color=theme.text_muted, weight=ft.FontWeight.W_600),
             ft.Container(height=6),
-            ft.Row([
-                ft.Text(current_acc_symbol, size=28, color=theme.accent_primary, weight=ft.FontWeight.BOLD),
-                amount_field,
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            amount_field,
+            amount_error,
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         bgcolor=theme.bg_card,
         border_radius=16,
