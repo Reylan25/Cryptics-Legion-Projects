@@ -29,6 +29,7 @@ from ui.passcode_lock_page import create_passcode_setup, create_passcode_verify
 from ui.admin_dashboard_page import AdminDashboardPage
 from ui.admin_users_page import AdminUserManagementPage
 from ui.admin_logs_page import AdminLogsPage
+from ui.admin_main_layout import AdminMainLayout
 from utils.statistics import create_charts_view
 
 
@@ -211,33 +212,25 @@ def main(page: ft.Page):
     
     # ============ ADMIN NAVIGATION FUNCTIONS ============
     def show_admin_dashboard():
-        """Show admin dashboard."""
-        navigate_to("admin_dashboard", lambda: AdminDashboardPage(
-            page, state, navigate_admin
+        """Show admin dashboard with new layout."""
+        navigate_to("admin_dashboard", lambda: AdminMainLayout(
+            page, state, lambda route: show_login() if route == "login" else None
         ).build())
     
     def show_admin_users():
-        """Show admin user management page."""
-        navigate_to("admin_users", lambda: AdminUserManagementPage(
-            page, state, navigate_admin
-        ).build())
+        """Show admin user management page (legacy - now part of main layout)."""
+        show_admin_dashboard()
     
     def show_admin_logs():
-        """Show admin activity logs page."""
-        navigate_to("admin_logs", lambda: AdminLogsPage(
-            page, state, navigate_admin
-        ).build())
+        """Show admin activity logs page (legacy - now part of main layout)."""
+        show_admin_dashboard()
     
     def navigate_admin(page_name: str):
-        """Navigate between admin pages."""
-        if page_name == "admin_dashboard":
-            show_admin_dashboard()
-        elif page_name == "users":
-            show_admin_users()
-        elif page_name == "logs":
-            show_admin_logs()
-        elif page_name == "login":
+        """Navigate between admin pages (legacy - now handled by AdminMainLayout)."""
+        if page_name == "login":
             show_login()
+        else:
+            show_admin_dashboard()
 
     # ============ AUTH CALLBACKS ============
     def on_login_success(user_id: int, is_admin: bool = False, admin_data: dict = None):

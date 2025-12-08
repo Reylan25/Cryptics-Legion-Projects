@@ -21,88 +21,59 @@ class AdminDashboardPage:
         # Get system statistics
         stats = db.get_system_statistics()
         
-        # Header
-        header = ft.Container(
-            content=ft.Row([
-                ft.Column([
-                    ft.Text(
-                        f"Welcome, {self.admin_data.get('full_name', 'Admin')}",
-                        size=24,
-                        weight=ft.FontWeight.BOLD,
-                        color=ft.Colors.WHITE
-                    ),
-                    ft.Text(
-                        "System Administration Dashboard",
-                        size=14,
-                        color=ft.Colors.WHITE70
-                    ),
-                ], spacing=4),
-                ft.Container(expand=True),
-                ft.IconButton(
-                    icon=ft.Icons.LOGOUT_ROUNDED,
-                    icon_color=ft.Colors.WHITE,
-                    tooltip="Logout",
-                    on_click=self.handle_logout
-                )
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            bgcolor=ft.Colors.BLUE_700,
-            padding=20,
-            border_radius=ft.border_radius.only(bottom_left=16, bottom_right=16)
-        )
-        
-        # Statistics Cards
-        stats_row_1 = ft.Row([
+        # Statistics Cards - Responsive Grid
+        stats_cards = ft.ResponsiveRow([
             self.create_stat_card(
                 "Total Users",
                 str(stats.get("total_users", 0)),
                 ft.Icons.PEOPLE_ROUNDED,
                 ft.Colors.BLUE_400,
-                "users"
+                "users",
+                col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
                 "Total Expenses",
                 str(stats.get("total_expenses", 0)),
                 ft.Icons.RECEIPT_LONG_ROUNDED,
                 ft.Colors.ORANGE_400,
-                None
+                None,
+                col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
-        ], spacing=12, wrap=True)
-        
-        stats_row_2 = ft.Row([
             self.create_stat_card(
                 "Total Amount",
                 f"â‚±{stats.get('total_amount', 0):,.2f}",
                 ft.Icons.ACCOUNT_BALANCE_WALLET_ROUNDED,
                 ft.Colors.GREEN_400,
-                None
+                None,
+                col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
                 "Active Users (30d)",
                 str(stats.get("active_users", 0)),
                 ft.Icons.TRENDING_UP_ROUNDED,
                 ft.Colors.PURPLE_400,
-                None
+                None,
+                col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
-        ], spacing=12, wrap=True)
-        
-        stats_row_3 = ft.Row([
             self.create_stat_card(
                 "New Users (This Month)",
                 str(stats.get("new_users_this_month", 0)),
                 ft.Icons.PERSON_ADD_ROUNDED,
                 ft.Colors.CYAN_400,
-                None
+                None,
+                col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
             self.create_stat_card(
                 "Total Accounts",
                 str(stats.get("total_accounts", 0)),
                 ft.Icons.ACCOUNT_BALANCE_ROUNDED,
                 ft.Colors.PINK_400,
-                None
+                None,
+                col={"xs": 6, "sm": 6, "md": 4, "lg": 2}
             ),
-        ], spacing=12, wrap=True)
+        ], spacing=12, run_spacing=12)
         
-        # Quick Actions
+        # Quick Actions - Responsive
         quick_actions = ft.Container(
             content=ft.Column([
                 ft.Text(
@@ -112,20 +83,22 @@ class AdminDashboardPage:
                     color=ft.Colors.WHITE
                 ),
                 ft.Container(height=12),
-                ft.Row([
+                ft.ResponsiveRow([
                     self.create_action_button(
                         "User Management",
                         ft.Icons.MANAGE_ACCOUNTS_ROUNDED,
                         ft.Colors.BLUE_700,
-                        "users"
+                        "users",
+                        col={"xs": 12, "sm": 6, "md": 6, "lg": 6}
                     ),
                     self.create_action_button(
                         "Activity Logs",
                         ft.Icons.HISTORY_ROUNDED,
                         ft.Colors.ORANGE_700,
-                        "logs"
+                        "logs",
+                        col={"xs": 12, "sm": 6, "md": 6, "lg": 6}
                     ),
-                ], spacing=12, wrap=True),
+                ], spacing=12, run_spacing=12),
             ]),
             padding=20,
             bgcolor="#2C2C2E",
@@ -162,30 +135,26 @@ class AdminDashboardPage:
             margin=ft.margin.only(top=8)
         )
         
-        # Main content
+        # Main content with responsive padding
         content = ft.Column([
-            header,
             ft.Container(
                 content=ft.Column([
                     ft.Container(height=12),
-                    stats_row_1,
-                    ft.Container(height=8),
-                    stats_row_2,
-                    ft.Container(height=8),
-                    stats_row_3,
+                    stats_cards,
+                    ft.Container(height=12),
                     quick_actions,
                     recent_activity,
                     ft.Container(height=20),
                 ], scroll=ft.ScrollMode.AUTO),
                 expand=True,
-                padding=ft.padding.only(left=20, right=20, top=0, bottom=0)
+                padding=ft.padding.symmetric(horizontal=16, vertical=0)
             )
         ], spacing=0, expand=True)
         
         return content
     
-    def create_stat_card(self, title: str, value: str, icon, color, navigate_to=None):
-        """Create a statistics card"""
+    def create_stat_card(self, title: str, value: str, icon, color, navigate_to=None, col=None):
+        """Create a responsive statistics card"""
         
         card_content = ft.Container(
             content=ft.Column([
@@ -214,16 +183,16 @@ class AdminDashboardPage:
             padding=16,
             bgcolor="#2C2C2E",
             border_radius=12,
-            width=170,
             height=140,
+            col=col,
             on_click=lambda _: self.on_navigate(navigate_to) if navigate_to else None,
             ink=True if navigate_to else False
         )
         
         return card_content
     
-    def create_action_button(self, title: str, icon, color, navigate_to: str):
-        """Create a quick action button"""
+    def create_action_button(self, title: str, icon, color, navigate_to: str, col=None):
+        """Create a responsive quick action button"""
         
         return ft.Container(
             content=ft.Row([
@@ -238,7 +207,7 @@ class AdminDashboardPage:
             padding=ft.padding.symmetric(horizontal=20, vertical=14),
             bgcolor=color,
             border_radius=10,
-            width=170,
+            col=col,
             on_click=lambda _: self.on_navigate(navigate_to),
             ink=True
         )

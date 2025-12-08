@@ -1037,3 +1037,451 @@ def is_biometric_enabled(user_id: int) -> bool:
         return False
     finally:
         conn.close()
+
+
+# ==================== ADMIN CONFIGURATION & POLICY ====================
+
+def init_admin_config_tables():
+    """Initialize admin configuration and policy tables"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    # Expense Categories table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS expense_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT,
+        gl_code TEXT,
+        icon TEXT DEFAULT 'category',
+        color TEXT DEFAULT '#2196F3',
+        is_active INTEGER DEFAULT 1,
+        parent_id INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (parent_id) REFERENCES expense_categories(id)
+    )
+    """)
+    
+    # Policy Rules table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS policy_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_name TEXT NOT NULL,
+        rule_type TEXT NOT NULL,
+        category_id INTEGER,
+        max_amount REAL,
+        currency TEXT DEFAULT 'PHP',
+        requires_receipt INTEGER DEFAULT 0,
+        requires_approval INTEGER DEFAULT 1,
+        disallowed_vendors TEXT,
+        per_diem_rate REAL,
+        description TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (category_id) REFERENCES expense_categories(id)
+    )
+    """)
+    
+    # Currency Exchange Rates table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS currency_rates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_currency TEXT NOT NULL,
+        to_currency TEXT NOT NULL,
+        rate REAL NOT NULL,
+        effective_date TEXT DEFAULT CURRENT_TIMESTAMP,
+        is_active INTEGER DEFAULT 1,
+        source TEXT DEFAULT 'manual',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(from_currency, to_currency, effective_date)
+    )
+    """)
+    
+    # Accounting Integration Config table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS accounting_integration (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL,
+        api_key TEXT,
+        api_secret TEXT,
+        company_id TEXT,
+        sync_enabled INTEGER DEFAULT 0,
+        last_sync TEXT,
+        sync_frequency TEXT DEFAULT 'daily',
+        auto_sync INTEGER DEFAULT 0,
+        config_json TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    
+    # Sync Logs table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS sync_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        integration_id INTEGER,
+        sync_type TEXT,
+        status TEXT,
+        records_synced INTEGER DEFAULT 0,
+        error_message TEXT,
+        started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT,
+        FOREIGN KEY (integration_id) REFERENCES accounting_integration(id)
+    )
+    """)
+    
+    conn.commit()
+    conn.close()
+
+
+# ==================== EXPENSE CATEGORIES CRUD ====================
+
+def get_expense_categories(include_inactive=False):
+    """Get all expense categories"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    query = """
+    SELECT id, name, description, gl_code, icon, color, is_active, parent_id, created_at, updated_at
+    FROM expense_categories
+    """
+    if not include_inactive:
+        query += " WHERE is_active = 1"
+    query += " ORDER BY name"
+    
+    cursor.execute(query)
+    return cursor.fetchall()
+
+
+def add_expense_category(name, description="", gl_code="", icon="category", color="#2196F3", parent_id=None):
+    """Add new expense category"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+        INSERT INTO expense_categories (name, description, gl_code, icon, color, parent_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, description, gl_code, icon, color, parent_id))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+    finally:
+        conn.close()
+
+
+def update_expense_category(category_id, name=None, description=None, gl_code=None, icon=None, color=None, is_active=None):
+    """Update expense category"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    updates = []
+    params = []
+    
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if gl_code is not None:
+        updates.append("gl_code = ?")
+        params.append(gl_code)
+    if icon is not None:
+        updates.append("icon = ?")
+        params.append(icon)
+    if color is not None:
+        updates.append("color = ?")
+        params.append(color)
+    if is_active is not None:
+        updates.append("is_active = ?")
+        params.append(is_active)
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(category_id)
+    
+    cursor.execute(f"""
+    UPDATE expense_categories
+    SET {', '.join(updates)}
+    WHERE id = ?
+    """, params)
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def delete_expense_category(category_id):
+    """Delete expense category (soft delete)"""
+    return update_expense_category(category_id, is_active=0)
+
+
+# ==================== POLICY RULES CRUD ====================
+
+def get_policy_rules(include_inactive=False):
+    """Get all policy rules"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    query = """
+    SELECT pr.id, pr.rule_name, pr.rule_type, pr.category_id, ec.name as category_name,
+           pr.max_amount, pr.currency, pr.requires_receipt, pr.requires_approval,
+           pr.disallowed_vendors, pr.per_diem_rate, pr.description, pr.is_active,
+           pr.created_at, pr.updated_at
+    FROM policy_rules pr
+    LEFT JOIN expense_categories ec ON pr.category_id = ec.id
+    """
+    if not include_inactive:
+        query += " WHERE pr.is_active = 1"
+    query += " ORDER BY pr.rule_name"
+    
+    cursor.execute(query)
+    return cursor.fetchall()
+
+
+def add_policy_rule(rule_name, rule_type, category_id=None, max_amount=None, currency="PHP", 
+                   requires_receipt=0, requires_approval=1, disallowed_vendors="", 
+                   per_diem_rate=None, description=""):
+    """Add new policy rule"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    INSERT INTO policy_rules (rule_name, rule_type, category_id, max_amount, currency,
+                             requires_receipt, requires_approval, disallowed_vendors,
+                             per_diem_rate, description)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (rule_name, rule_type, category_id, max_amount, currency, requires_receipt,
+          requires_approval, disallowed_vendors, per_diem_rate, description))
+    
+    conn.commit()
+    conn.close()
+    return cursor.lastrowid
+
+
+def update_policy_rule(rule_id, **kwargs):
+    """Update policy rule"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    valid_fields = ['rule_name', 'rule_type', 'category_id', 'max_amount', 'currency',
+                   'requires_receipt', 'requires_approval', 'disallowed_vendors',
+                   'per_diem_rate', 'description', 'is_active']
+    
+    updates = []
+    params = []
+    
+    for field, value in kwargs.items():
+        if field in valid_fields:
+            updates.append(f"{field} = ?")
+            params.append(value)
+    
+    if not updates:
+        return False
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(rule_id)
+    
+    cursor.execute(f"""
+    UPDATE policy_rules
+    SET {', '.join(updates)}
+    WHERE id = ?
+    """, params)
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def delete_policy_rule(rule_id):
+    """Delete policy rule (soft delete)"""
+    return update_policy_rule(rule_id, is_active=0)
+
+
+# ==================== CURRENCY EXCHANGE RATES ====================
+
+def get_currency_rates(from_currency=None, to_currency=None):
+    """Get currency exchange rates"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    query = """
+    SELECT id, from_currency, to_currency, rate, effective_date, is_active, source, updated_at
+    FROM currency_rates
+    WHERE is_active = 1
+    """
+    params = []
+    
+    if from_currency:
+        query += " AND from_currency = ?"
+        params.append(from_currency)
+    if to_currency:
+        query += " AND to_currency = ?"
+        params.append(to_currency)
+    
+    query += " ORDER BY effective_date DESC, from_currency, to_currency"
+    
+    cursor.execute(query, params)
+    return cursor.fetchall()
+
+
+def add_currency_rate(from_currency, to_currency, rate, effective_date=None, source="manual"):
+    """Add currency exchange rate"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+        INSERT INTO currency_rates (from_currency, to_currency, rate, effective_date, source)
+        VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+        """, (from_currency, to_currency, rate, effective_date, source))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        # Update existing rate
+        cursor.execute("""
+        UPDATE currency_rates
+        SET rate = ?, updated_at = CURRENT_TIMESTAMP, source = ?
+        WHERE from_currency = ? AND to_currency = ? AND effective_date = COALESCE(?, CURRENT_TIMESTAMP)
+        """, (rate, source, from_currency, to_currency, effective_date))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_currency_rate(rate_id, rate=None, is_active=None):
+    """Update currency rate"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    updates = []
+    params = []
+    
+    if rate is not None:
+        updates.append("rate = ?")
+        params.append(rate)
+    if is_active is not None:
+        updates.append("is_active = ?")
+        params.append(is_active)
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(rate_id)
+    
+    cursor.execute(f"""
+    UPDATE currency_rates
+    SET {', '.join(updates)}
+    WHERE id = ?
+    """, params)
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+# ==================== ACCOUNTING INTEGRATION ====================
+
+def get_accounting_integrations():
+    """Get all accounting integrations"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    SELECT id, platform, company_id, sync_enabled, last_sync, sync_frequency,
+           auto_sync, is_active, created_at, updated_at
+    FROM accounting_integration
+    WHERE is_active = 1
+    ORDER BY platform
+    """)
+    
+    return cursor.fetchall()
+
+
+def add_accounting_integration(platform, api_key="", api_secret="", company_id="", 
+                               sync_enabled=0, sync_frequency="daily", auto_sync=0, config_json="{}"):
+    """Add accounting integration"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    INSERT INTO accounting_integration (platform, api_key, api_secret, company_id,
+                                       sync_enabled, sync_frequency, auto_sync, config_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (platform, api_key, api_secret, company_id, sync_enabled, sync_frequency, auto_sync, config_json))
+    
+    conn.commit()
+    conn.close()
+    return cursor.lastrowid
+
+
+def update_accounting_integration(integration_id, **kwargs):
+    """Update accounting integration"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    valid_fields = ['platform', 'api_key', 'api_secret', 'company_id', 'sync_enabled',
+                   'last_sync', 'sync_frequency', 'auto_sync', 'config_json', 'is_active']
+    
+    updates = []
+    params = []
+    
+    for field, value in kwargs.items():
+        if field in valid_fields:
+            updates.append(f"{field} = ?")
+            params.append(value)
+    
+    if not updates:
+        return False
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(integration_id)
+    
+    cursor.execute(f"""
+    UPDATE accounting_integration
+    SET {', '.join(updates)}
+    WHERE id = ?
+    """, params)
+    
+    conn.commit()
+    conn.close()
+    return cursor.rowcount > 0
+
+
+def log_sync_activity(integration_id, sync_type, status, records_synced=0, error_message=None):
+    """Log sync activity"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+    INSERT INTO sync_logs (integration_id, sync_type, status, records_synced, error_message, completed_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (integration_id, sync_type, status, records_synced, error_message))
+    
+    conn.commit()
+    conn.close()
+    return cursor.lastrowid
+
+
+def get_sync_logs(integration_id=None, limit=50):
+    """Get sync logs"""
+    conn = connect_db()
+    cursor = conn.cursor()
+    
+    query = """
+    SELECT sl.id, sl.integration_id, ai.platform, sl.sync_type, sl.status,
+           sl.records_synced, sl.error_message, sl.started_at, sl.completed_at
+    FROM sync_logs sl
+    JOIN accounting_integration ai ON sl.integration_id = ai.id
+    """
+    
+    if integration_id:
+        query += " WHERE sl.integration_id = ?"
+        cursor.execute(query + " ORDER BY sl.started_at DESC LIMIT ?", (integration_id, limit))
+    else:
+        cursor.execute(query + " ORDER BY sl.started_at DESC LIMIT ?", (limit,))
+    
+    return cursor.fetchall()
