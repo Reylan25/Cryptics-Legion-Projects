@@ -373,12 +373,9 @@ def build_login_content(page: ft.Page, on_success, show_register, show_onboardin
         
         # Check if this is an admin user first
         if admin_auth.is_admin_username(user):
-            print(f"DEBUG: Admin username detected: {user}")
             success, admin_data = admin_auth.login_admin(user, pwd)
-            print(f"DEBUG: Admin login result: {success}, data: {admin_data}")
             
             if success:
-                print("DEBUG: Calling on_success with admin data")
                 on_success(admin_data["id"], is_admin=True, admin_data=admin_data)
                 return
             else:

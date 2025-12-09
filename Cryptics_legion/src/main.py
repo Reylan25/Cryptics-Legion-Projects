@@ -89,20 +89,29 @@ def main(page: ft.Page):
     
     def navigate_to(view_name: str, content_builder):
         """Navigate to a view by swapping container content - NO page.clean()!"""
-        state["previous_view"] = state["current_view"]
-        state["current_view"] = view_name
-        update_theme()
-        
-        # Close notification panel if open
-        if "notification_center" in state:
-            notification_center = state["notification_center"]
-            if hasattr(notification_center, 'close_panel'):
-                notification_center.close_panel()
-        
-        # Build the new content and swap it in
-        new_content = content_builder()
-        app_container.content = new_content
-        page.update()
+        try:
+            print(f"DEBUG: Navigating to {view_name}")
+            state["previous_view"] = state["current_view"]
+            state["current_view"] = view_name
+            update_theme()
+            
+            # Close notification panel if open
+            if "notification_center" in state:
+                notification_center = state["notification_center"]
+                if hasattr(notification_center, 'close_panel'):
+                    notification_center.close_panel()
+            
+            # Build the new content and swap it in
+            print(f"DEBUG: Building content for {view_name}")
+            new_content = content_builder()
+            print(f"DEBUG: Content built successfully for {view_name}")
+            app_container.content = new_content
+            page.update()
+            print(f"DEBUG: Successfully navigated to {view_name}")
+        except Exception as ex:
+            print(f"ERROR in navigate_to({view_name}): {ex}")
+            import traceback
+            traceback.print_exc()
 
     # ============ VIEW NAVIGATION FUNCTIONS ============
     def show_login():
@@ -151,6 +160,7 @@ def main(page: ft.Page):
         ))
     
     def show_home():
+        print("DEBUG: show_home() called")
         navigate_to("home", lambda: build_home_content(
             page, state, toast, show_expenses, do_logout, 
             show_statistics, show_profile, show_add_expense, show_all_expenses

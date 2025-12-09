@@ -1045,7 +1045,10 @@ def build_home_content(page: ft.Page, state: dict, toast,
     notification_center = state["notification_center"]
     
     # Load user notifications from database
-    NotificationHistory.load_user_notifications(state["user_id"])
+    try:
+        NotificationHistory.load_user_notifications(state["user_id"])
+    except Exception as e:
+        print(f"Warning: Failed to load notification history: {e}")
     
     expenses_list = ft.Column(spacing=4)
     

@@ -51,9 +51,15 @@ def build_onboarding_content(page: ft.Page, on_get_started, state=None):
     theme = get_theme()
     
     def handle_get_started(e):
-        if state and state.get("user_id"):
-            db.mark_onboarding_seen(state["user_id"])
-        on_get_started()
+        try:
+            if state and state.get("user_id"):
+                db.mark_onboarding_seen(state["user_id"])
+            on_get_started()
+        except Exception as ex:
+            print(f"ERROR in handle_get_started: {ex}")
+            import traceback
+            traceback.print_exc()
+            on_get_started()  # Still try to navigate even if marking fails
     
     return ft.Container(
         expand=True,
