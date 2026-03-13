@@ -38,7 +38,7 @@ from utils.statistics import create_charts_view
 def main(page: ft.Page):
     """Main application entry point with flash-free navigation."""
     
-    # ============ APP CONFIGURATION ============
+    # ============ APP CONFIGURATION ============   
     page.title = "Smart Expense Tracker"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
@@ -348,4 +348,38 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets")
+
+    # ============================================================
+    # RUN MODE - uncomment ONE block at a time
+    # ============================================================
+
+    # ----------------------------------------------------------
+    # MODE 1: DESKTOP APP (default window)
+    # Uncomment the line below and comment out MODE 2 to run
+    # as a native desktop application.
+    # ----------------------------------------------------------
+    #ft.app(target=main, assets_dir="assets")
+
+    # ----------------------------------------------------------
+    # MODE 2: WEB / LOCALHOST  (+ optional ngrok public URL)
+    # Comment out MODE 1 above, then uncomment this entire block.
+    # ----------------------------------------------------------
+    PORT = 8550
+    
+    # Optional: expose via ngrok (requires: pip install pyngrok)
+    # Get a free auth token at https://dashboard.ngrok.com
+    try:
+        from pyngrok import ngrok
+        tunnel = ngrok.connect(PORT, bind_tls=True)
+        print("\n" + "=" * 55)
+        print(f"  ngrok Public URL : {tunnel.public_url}")
+        print(f"  Local URL        : http://localhost:{PORT}")
+        print("=" * 55 + "\n")
+    except ImportError:
+        print(f"[INFO] pyngrok not installed - run: pip install pyngrok")
+        print(f"[INFO] App available at: http://localhost:{PORT}\n")
+    except BaseException as e:
+        print(f"[INFO] ngrok skipped ({type(e).__name__}: {e})")
+        print(f"[INFO] App available at: http://localhost:{PORT}\n")
+    
+    ft.app(target=main, assets_dir="assets", port=PORT, view=ft.AppView.WEB_BROWSER)

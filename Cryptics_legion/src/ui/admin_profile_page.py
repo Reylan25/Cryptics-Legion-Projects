@@ -813,7 +813,7 @@ class AdminProfilePage:
                 ft.TextField(
                     hint_text="DELETE",
                     border_color=ft.Colors.RED_400,
-                    on_change=lambda e: setattr(confirm_btn, "disabled", e.control.value != "DELETE") or self.page.update()
+                    ref=ft.Ref[ft.TextField]()
                 )
             ], spacing=4, tight=True),
             actions=[
@@ -833,6 +833,12 @@ class AdminProfilePage:
         )
         
         confirm_btn = dialog.actions[1]
+        # Wire up the text field on_change now that confirm_btn exists
+        confirm_text_field = dialog.content.controls[-1]
+        def on_confirm_type(e):
+            confirm_btn.disabled = (e.control.value != "DELETE")
+            self.page.update()
+        confirm_text_field.on_change = on_confirm_type
         self.page.open(dialog)
     
     def delete_account(self):

@@ -549,6 +549,10 @@ def build_login_content(page: ft.Page, on_success, show_register, show_onboardin
                 ft.TextButton("Sign Up", on_click=lambda e: show_register(), 
                              style=ft.ButtonStyle(color=theme.accent_secondary))
             ], alignment=ft.MainAxisAlignment.CENTER),
-        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Container(height=20),
+        ],
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        scroll=ft.ScrollMode.AUTO,
+        ),
         alignment=ft.alignment.top_center
     )

@@ -1000,8 +1000,8 @@ def get_all_users_for_admin():
     cur = conn.cursor()
     cur.execute("""
         SELECT u.id, u.username, u.full_name, u.email, u.last_login, u.has_seen_onboarding,
-               (SELECT COUNT(*) FROM expenses WHERE user_id = u.id) as expense_count,
-               (SELECT SUM(amount) FROM expenses WHERE user_id = u.id) as total_spent,
+               COALESCE((SELECT COUNT(*) FROM expenses WHERE user_id = u.id), 0) as expense_count,
+               COALESCE((SELECT SUM(amount) FROM expenses WHERE user_id = u.id), 0.0) as total_spent,
                u.currency
         FROM users u
         ORDER BY u.id DESC
@@ -1081,10 +1081,6 @@ def delete_user_by_admin(user_id: int) -> bool:
         cursor.execute("DELETE FROM expenses WHERE user_id = ?", (user_id,))
         # Delete all accounts
         cursor.execute("DELETE FROM accounts WHERE user_id = ?", (user_id,))
-        # Delete passcodes
-        cursor.execute("DELETE FROM passcodes WHERE user_id = ?", (user_id,))
-        # Delete user profile
-        cursor.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
         # Delete user
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
@@ -1102,7 +1098,7 @@ def get_user_expenses_for_admin(user_id: int, limit: int = 5):
     conn = connect_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, description, amount, category, date, receipt_path
+        SELECT id, description, amount, category, date
         FROM expenses
         WHERE user_id = ?
         ORDER BY date DESC

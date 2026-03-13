@@ -1215,7 +1215,29 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
     SUCCESS_COLOR = "#2E7D32"
     
     form_data = {"username": "", "first_name": "", "last_name": "", "full_name": "", "email": "", "phone": "", "currency": "PHP"}
-    
+
+    # Phone country codes with required digit count per region
+    PHONE_CODES = [
+        {"code": "+63", "country": "🇵🇭 Philippines", "flag": "🇵🇭", "digits": 10, "hint": "9XX XXX XXXX"},
+        {"code": "+1",  "country": "🇺🇸 United States", "flag": "🇺🇸", "digits": 10, "hint": "XXX XXX XXXX"},
+        {"code": "+44", "country": "🇬🇧 United Kingdom", "flag": "🇬🇧", "digits": 10, "hint": "XXXX XXXXXX"},
+        {"code": "+81", "country": "🇯🇵 Japan", "flag": "🇯🇵", "digits": 10, "hint": "XX XXXX XXXX"},
+        {"code": "+82", "country": "🇰🇷 South Korea", "flag": "🇰🇷", "digits": 10, "hint": "XX XXXX XXXX"},
+        {"code": "+86", "country": "🇨🇳 China", "flag": "🇨🇳", "digits": 11, "hint": "1XX XXXX XXXX"},
+        {"code": "+65", "country": "🇸🇬 Singapore", "flag": "🇸🇬", "digits": 8, "hint": "XXXX XXXX"},
+        {"code": "+60", "country": "🇲🇾 Malaysia", "flag": "🇲🇾", "digits": 9, "hint": "XX XXXX XXX"},
+        {"code": "+66", "country": "🇹🇭 Thailand", "flag": "🇹🇭", "digits": 9, "hint": "XX XXXX XXX"},
+        {"code": "+84", "country": "🇻🇳 Vietnam", "flag": "🇻🇳", "digits": 9, "hint": "XX XXXX XXX"},
+        {"code": "+62", "country": "🇮🇩 Indonesia", "flag": "🇮🇩", "digits": 11, "hint": "8XX XXXX XXXX"},
+        {"code": "+91", "country": "🇮🇳 India", "flag": "🇮🇳", "digits": 10, "hint": "XXXXX XXXXX"},
+        {"code": "+61", "country": "🇦🇺 Australia", "flag": "🇦🇺", "digits": 9, "hint": "4XX XXX XXX"},
+        {"code": "+49", "country": "🇩🇪 Germany", "flag": "🇩🇪", "digits": 10, "hint": "1XX XXXXXXX"},
+        {"code": "+33", "country": "🇫🇷 France", "flag": "🇫🇷", "digits": 9, "hint": "X XX XX XX XX"},
+        {"code": "+971", "country": "🇦🇪 UAE", "flag": "🇦🇪", "digits": 9, "hint": "5X XXX XXXX"},
+        {"code": "+966", "country": "🇸🇦 Saudi Arabia", "flag": "🇸🇦", "digits": 9, "hint": "5X XXX XXXX"},
+    ]
+    phone_state = {"code": "+63", "flag": "🇵🇭", "digits": 10, "hint": "9XX XXX XXXX"}
+
     def create_field(label, hint, icon, key):
         def on_change(e):
             form_data[key] = e.control.value
@@ -1239,7 +1261,170 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             padding=ft.padding.only(left=16, right=8),
             border=ft.border.all(1, BORDER_COLOR),
         )
-    
+
+    def create_phone_field():
+        """Create phone input with region selector and digits-only validation."""
+        code_text = ft.Text(
+            f"{phone_state['flag']} {phone_state['code']}",
+            size=13,
+            color=TEXT_PRIMARY,
+            weight=ft.FontWeight.W_500,
+        )
+        digit_hint = ft.Text(
+            f"Enter {phone_state['digits']} digits",
+            size=11,
+            color=TEXT_MUTED,
+        )
+        phone_error_text = ft.Text("", size=11, color=ERROR_COLOR, visible=False)
+
+        phone_input = ft.TextField(
+            hint_text=phone_state["hint"],
+            hint_style=ft.TextStyle(color=TEXT_MUTED, size=14),
+            border=ft.InputBorder.NONE,
+            bgcolor="transparent",
+            color=TEXT_PRIMARY,
+            text_size=14,
+            expand=True,
+            keyboard_type=ft.KeyboardType.NUMBER,
+            content_padding=ft.padding.symmetric(horizontal=8, vertical=12),
+            max_length=phone_state["digits"],
+        )
+
+        # Container reference so focus/error handlers can update its border
+        phone_container_ref = {"ref": None}
+
+        def on_phone_change(e):
+            raw = phone_input.value or ""
+            digits_only = "".join(c for c in raw if c.isdigit())
+            if raw != digits_only:
+                phone_input.value = digits_only
+            form_data["phone"] = f"{phone_state['code']} {digits_only}" if digits_only else ""
+            if phone_error_text.visible:
+                phone_error_text.visible = False
+                if phone_container_ref["ref"]:
+                    phone_container_ref["ref"].border = ft.border.all(1, BORDER_COLOR)
+            page.update()
+
+        phone_input.on_change = on_phone_change
+
+        def on_focus(e):
+            if phone_container_ref["ref"]:
+                phone_container_ref["ref"].border = ft.border.all(1.5, TEAL_ACCENT)
+            page.update()
+
+        def on_blur(e):
+            if phone_container_ref["ref"] and not phone_error_text.visible:
+                phone_container_ref["ref"].border = ft.border.all(1, BORDER_COLOR)
+            page.update()
+
+        phone_input.on_focus = on_focus
+        phone_input.on_blur = on_blur
+
+        def show_region_picker(ev):
+            def select_region(c):
+                def handler(inner_e):
+                    phone_state["code"] = c["code"]
+                    phone_state["flag"] = c["flag"]
+                    phone_state["digits"] = c["digits"]
+                    phone_state["hint"] = c["hint"]
+                    code_text.value = f"{c['flag']} {c['code']}"
+                    digit_hint.value = f"Enter {c['digits']} digits"
+                    phone_input.hint_text = c["hint"]
+                    phone_input.max_length = c["digits"]
+                    phone_input.value = ""
+                    form_data["phone"] = ""
+                    page.close(bs)
+                    page.update()
+                return handler
+
+            items = [
+                ft.Container(
+                    content=ft.Row([
+                        ft.Text(cc["country"], size=14, color=TEXT_PRIMARY, expand=True),
+                        ft.Text(
+                            f"{cc['code']}  ·  {cc['digits']}d",
+                            size=12,
+                            color=TEAL_ACCENT,
+                            weight=ft.FontWeight.W_600,
+                        ),
+                    ]),
+                    padding=ft.padding.symmetric(horizontal=20, vertical=13),
+                    on_click=select_region(cc),
+                    ink=True,
+                    border_radius=8,
+                )
+                for cc in PHONE_CODES
+            ]
+
+            bs = ft.BottomSheet(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Text("Select Region", size=18, weight=ft.FontWeight.W_600, color=TEXT_PRIMARY),
+                                ft.IconButton(
+                                    icon=ft.Icons.CLOSE_ROUNDED,
+                                    icon_color=TEXT_MUTED,
+                                    icon_size=20,
+                                    on_click=lambda e: page.close(bs),
+                                ),
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                            padding=ft.padding.only(left=20, right=8, top=8, bottom=8),
+                        ),
+                        ft.Divider(height=1, color=BORDER_COLOR),
+                        ft.Container(
+                            content=ft.Column(
+                                controls=items,
+                                scroll=ft.ScrollMode.AUTO,
+                                spacing=2,
+                            ),
+                            expand=True,
+                            padding=ft.padding.only(bottom=20),
+                        ),
+                    ], spacing=0),
+                    bgcolor=CARD_BG,
+                    border_radius=ft.border_radius.only(top_left=20, top_right=20),
+                    padding=0,
+                    height=430,
+                ),
+                bgcolor="transparent",
+            )
+            page.open(bs)
+
+        code_button = ft.Container(
+            content=ft.Row([
+                code_text,
+                ft.Icon(ft.Icons.ARROW_DROP_DOWN_ROUNDED, size=18, color=TEXT_MUTED),
+            ], spacing=2),
+            on_click=show_region_picker,
+            ink=True,
+            border_radius=8,
+            padding=ft.padding.symmetric(horizontal=4, vertical=4),
+        )
+
+        phone_container = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.PHONE_OUTLINED, size=20, color=TEXT_MUTED),
+                code_button,
+                ft.Container(width=1, height=24, bgcolor=BORDER_COLOR),
+                phone_input,
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            bgcolor=FIELD_BG,
+            border_radius=12,
+            border=ft.border.all(1, BORDER_COLOR),
+            padding=ft.padding.only(left=16, right=12),
+        )
+        phone_container_ref["ref"] = phone_container
+
+        return ft.Column([
+            ft.Row([
+                ft.Text("Phone Number", size=13, color=TEXT_SECONDARY, weight=ft.FontWeight.W_500),
+                phone_error_text,
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            phone_container,
+            digit_hint,
+        ], spacing=6)
+
     def handle_continue(e):
         username = form_data["username"].strip()
         first_name = form_data["first_name"].strip()
@@ -1279,7 +1464,18 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
         if not phone:
             show_validation_dialog(page, "Phone Required", "Please enter your phone number for account recovery.", CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT)
             return
-        
+        # Strip the country code prefix before counting digits (phone is stored as "+63 9107990681")
+        local_number = phone.split(" ", 1)[1] if " " in phone else phone
+        phone_digits_only = "".join(c for c in local_number if c.isdigit())
+        required_digits = phone_state["digits"]
+        if len(phone_digits_only) != required_digits:
+            show_validation_dialog(
+                page, "Invalid Phone Number",
+                f"Phone number for {phone_state['flag']} {phone_state['code']} must be exactly {required_digits} digits. You entered {len(phone_digits_only)} digit(s).",
+                CARD_BG, TEXT_PRIMARY, TEXT_SECONDARY, ERROR_COLOR, TEAL_ACCENT,
+            )
+            return
+
         # Register user
         password = state.get("temp_password", "")
         if not password:
@@ -1419,7 +1615,7 @@ def build_personal_details_content(page: ft.Page, state: dict, toast, on_complet
             ft.Container(height=12),
             create_field("Email", "Enter your email", ft.Icons.EMAIL_OUTLINED, "email"),
             ft.Container(height=12),
-            create_field("Phone", "Enter phone number", ft.Icons.PHONE_OUTLINED, "phone"),
+            create_phone_field(),
         ]),
         bgcolor=CARD_BG,
         border_radius=24,

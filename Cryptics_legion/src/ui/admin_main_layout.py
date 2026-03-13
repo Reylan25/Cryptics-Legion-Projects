@@ -4,6 +4,7 @@ Comprehensive admin interface matching the ExpenseWise design
 """
 
 import flet as ft
+from core import admin_auth
 from components.admin_sidebar import AdminSidebar
 from ui.admin_dashboard_page import AdminDashboardPage
 from ui.admin_users_page import AdminUserManagementPage
@@ -138,6 +139,8 @@ class AdminMainLayout:
     
     def toggle_sidebar(self, e):
         """Toggle sidebar visibility"""
+        if not hasattr(self, 'sidebar_container') or self.sidebar_container is None:
+            return
         self.sidebar_container.visible = not self.sidebar_container.visible
         self.page.update()
     
@@ -355,7 +358,6 @@ class AdminMainLayout:
         def handle_logout(e):
             self.page.close(menu)
             # Log logout
-            from core import admin_auth
             admin_auth.logout_admin(
                 self.admin_data.get("id"),
                 self.admin_data.get("username", "")

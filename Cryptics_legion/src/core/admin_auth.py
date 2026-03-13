@@ -20,8 +20,14 @@ def login_admin(username: str, password: str) -> tuple[bool, dict | None]:
         admin_data contains: id, username, full_name, email, role
     """
     
+    # Guard against empty inputs
+    if not username or not isinstance(username, str) or not username.strip():
+        return False, None
+    if not password or not isinstance(password, str):
+        return False, None
+
     # Get admin by username
-    admin = db.get_admin_by_username(username)
+    admin = db.get_admin_by_username(username.strip())
     
     if not admin:
         return False, None
@@ -59,14 +65,16 @@ def login_admin(username: str, password: str) -> tuple[bool, dict | None]:
 def is_admin_username(username: str) -> bool:
     """
     Check if username belongs to an admin account
-    
+
     Args:
         username: Username to check
-    
+
     Returns:
         bool: True if username exists in admins table
     """
-    admin = db.get_admin_by_username(username)
+    if not username or not isinstance(username, str) or not username.strip():
+        return False
+    admin = db.get_admin_by_username(username.strip())
     return admin is not None
 
 

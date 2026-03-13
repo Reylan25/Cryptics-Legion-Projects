@@ -131,8 +131,8 @@ class AdminLogsPage:
     def create_log_item(self, log: tuple):
         """Create a log item"""
         
-        # log: (id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username)
-        log_id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username = log
+        # log: (id, admin_id, admin_username, action, target_user_id, target_username, details, timestamp)
+        log_id, admin_id, admin_username, action, target_user_id, target_username, details, timestamp = log
         
         # Format timestamp
         from datetime import datetime

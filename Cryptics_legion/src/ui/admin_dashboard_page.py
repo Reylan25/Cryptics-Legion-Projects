@@ -264,8 +264,8 @@ class AdminDashboardPage:
     def create_activity_item(self, log: tuple):
         """Create an activity log item (deprecated - use create_enhanced_activity_item)"""
         
-        # log: (id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username)
-        log_id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username = log
+        # log: (id, admin_id, admin_username, action, target_user_id, target_username, details, timestamp)
+        log_id, admin_id, admin_username, action, target_user_id, target_username, details, timestamp = log
         
         # Format timestamp
         from datetime import datetime
@@ -312,8 +312,8 @@ class AdminDashboardPage:
     def create_enhanced_activity_item(self, log: tuple, index: int):
         """Create an enhanced activity log item with better visuals"""
         
-        # log: (id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username)
-        log_id, admin_id, action, target_user_id, details, timestamp, admin_username, target_username = log
+        # log: (id, admin_id, admin_username, action, target_user_id, target_username, details, timestamp)
+        log_id, admin_id, admin_username, action, target_user_id, target_username, details, timestamp = log
         
         # Check if mobile view
         is_mobile = self.page.width < 768
