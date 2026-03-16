@@ -67,49 +67,77 @@ Key Characteristics
 
 ```
 Cryptics-Legion-Projects/
-├── Cryptics_legion/
-│   ├── main.py                    # Application entry point
-│   ├── init_db.py                 # Database initialization
-│   ├── pyproject.toml             # Project configuration
-│   ├── src/
-│   │   ├── core/
-│   │   │   ├── auth.py            # Authentication logic
-│   │   │   ├── db.py              # Database connection
-│   │   │   └── theme.py           # Theme configuration
-│   │   ├── ui/                    # All UI pages
-│   │   │   ├── login_page.py
-│   │   │   ├── home_page.py
-│   │   │   ├── Expenses.py
-│   │   │   ├── statistics_page.py
-│   │   │   └── [13+ other pages...]
-│   │   ├── components/            # Reusable UI components
-│   │   │   ├── bottom_nav.py
-│   │   │   ├── circular_gauge.py
-│   │   │   └── [other components...]
-│   │   ├── utils/                 # Business logic
-│   │   │   ├── currency_exchange.py
-│   │   │   ├── statistics.py
-│   │   │   ├── brand_recognition.py
-│   │   │   └── otp.py
-│   │   ├── database/
-│   │   │   └── expense_tracker.db
-│   │   └── storage/               # Cache and temp files
-│   └── assets/                    # Images and icons
-├── docs/                          # Comprehensive documentation
-│   ├── 00_PROJECT_OVERVIEW.md
-│   ├── 01_FEATURES_SCOPE.md
-│   ├── 02_ARCHITECTURE.md
-│   ├── 03_DATA_MODEL.md
-│   ├── 04_EMERGING_TECH.md
-│   ├── 05_SETUP_RUN.md
-│   ├── 06_TESTING.md
-│   ├── 07_TEAM_ROLES.md
-│   ├── 08_RISKS_CONSTRAINTS.md
-│   ├── 09_INDIVIDUAL_REFLECTION.md
-│   ├── DATABASE_SCHEMA_ACTUAL.md
-│   └── [more docs...]
-├── README.md                      # This file
-└── .gitignore
+├── 🎯 Main Application
+│   └── Cryptics_legion/                          # Main application source
+│       ├── src/
+│       │   ├── main.py                          # Entry point
+│       │   ├── init_db.py                       # DB initialization
+│       │   ├── init_admin.py                    # Admin setup
+│       │   ├── expense_tracker.db               # SQLite database
+│       │   │
+│       │   ├── core/                            # Core modules
+│       │   │   ├── auth.py                      # Authentication
+│       │   │   ├── db.py                        # Database ops
+│       │   │   └── theme.py                     # UI theming
+│       │   │
+│       │   ├── ui/                              # User interface (organized)
+│       │   │   ├── auth/                        # Login, Register, Reset
+│       │   │   ├── onboarding/                  # Onboarding flow
+│       │   │   ├── user/                        # Main features (11 pages)
+│       │   │   ├── profile/                     # Profile & settings (4 pages)
+│       │   │   ├── admin/                       # Admin tools (11 pages)
+│       │   │   └── components/                  # Reusable components
+│       │   │
+│       │   ├── utils/                           # Business logic
+│       │   │   ├── currency.py                  # Currency conversion
+│       │   │   ├── statistics.py                # Analytics
+│       │   │   └── quickbooks_integration.py    # QB Online integration
+│       │   │
+│       │   ├── components/                      # UI components
+│       │   │   ├── notification.py              # Notifications
+│       │   │   ├── enhanced_icons.py            # Icons
+│       │   │   └── circular_gauge.py            # Gauges
+│       │   │
+│       │   ├── assets/                          # App resources
+│       │   └── database/                        # DB files
+│       │
+│       ├── pyproject.toml                       # Python config
+│       ├── README.md                            # App documentation
+│       └── .gitignore                           # Git excludes
+│
+├── 📚 Documentation
+│   └── docs/                                    # Organized documentation
+│       ├── 01_project/                          # Core docs (10 files)
+│       ├── 02_admin/                            # Admin guides (8 files)
+│       ├── 03_agile/                            # Sprint planning (12 files)
+│       ├── 04_features/                         # Features (10 files)
+│       ├── 05_quickbooks/                       # QB integration (9 files)
+│       ├── 06_reference/                        # References (5 files)
+│       ├── 07_assets/                           # Images & PDFs (26 items)
+│       └── README.md                            # 📖 Documentation hub
+│
+├── 🧪 Testing
+│   ├── tests/                                   # Automated tests
+│   │   ├── test_currency_api.py
+│   │   ├── test_notification_persistence.py
+│   │   ├── test_onboarding_click.py
+│   │   ├── test_onboarding_flow.py
+│   │   └── README.md
+│   └── Cryptics_legion/test_currency.py        # Additional tests
+│
+├── 🔧 Utilities
+│   ├── scripts/                                 # Admin scripts
+│   │   ├── check_accounts.py
+│   │   └── README.md
+│   └── my_env/                                  # Python virtual environment
+│
+├── 📋 Configuration
+│   ├── pyproject.toml                          # Project config
+│   ├── .gitignore                              # Git excludes
+│   └── README.md                               # This file
+│
+└── 📚 Version Control
+    └── .git/                                   # Git repository
 ```
 
 ---
@@ -162,6 +190,61 @@ python src/init_db.py
 python src/main.py
 ```
 
+---
+
+## 🗺️ Navigation Guide
+
+### 📖 Starting Points by Role
+
+**👤 For New Users**
+→ [docs/README.md](docs/README.md) - Documentation hub
+→ [docs/06_reference/USER_MANUAL.md](docs/06_reference/USER_MANUAL.md) - User guide
+
+**👨‍💼 For Admins**
+→ [docs/02_admin/ADMIN_QUICK_START.md](docs/02_admin/ADMIN_QUICK_START.md) - 5-minute start
+→ [docs/02_admin/ADMIN_NAVIGATION_GUIDE.md](docs/02_admin/ADMIN_NAVIGATION_GUIDE.md) - Interface tour
+
+**👨‍💻 For Developers**
+→ [Cryptics_legion/README.md](Cryptics_legion/README.md) - Source code overview
+→ [docs/06_reference/UI_FOLDER_ORGANIZATION.md](docs/06_reference/UI_FOLDER_ORGANIZATION.md) - Code structure
+→ [docs/01_project/02_ARCHITECTURE.md](docs/01_project/02_ARCHITECTURE.md) - System design
+
+**💰 For QuickBooks Integration**
+→ [docs/05_quickbooks/README.md](docs/05_quickbooks/README.md) - QB integration hub
+→ [docs/05_quickbooks/QUICKBOOKS_DOCUMENTATION_INDEX.md](docs/05_quickbooks/QUICKBOOKS_DOCUMENTATION_INDEX.md) - Choose your guide
+
+### 🗂️ Where to Find Things
+
+| Need | Location |
+|------|----------|
+| **Source Code** | `Cryptics_legion/src/` |
+| **Tests** | `tests/` |
+| **Scripts** | `scripts/` |
+| **Documentation** | `docs/` |
+| **Application UI** | `Cryptics_legion/src/ui/` |
+| **Admin Tools** | `Cryptics_legion/src/ui/admin/` |
+| **Database Schema** | `docs/01_project/03_DATA_MODEL.md` |
+| **Setup Instructions** | `docs/01_project/05_SETUP_RUN.md` |
+| **Troubleshooting** | `docs/06_reference/BUG_DOCUMENTATION.md` |
+| **QuickBooks Setup** | `docs/05_quickbooks/` |
+
+### 📚 Documentation Organization
+
+```
+docs/
+├── 01_project/          Project foundation & architecture
+├── 02_admin/            Admin system guides  
+├── 03_agile/            Sprint planning & backlog
+├── 04_features/         Feature-specific docs
+├── 05_quickbooks/       QB integration guides
+├── 06_reference/        Quick refs & manuals
+└── 07_assets/           Images & supporting files
+```
+
+See [docs/README.md](docs/README.md) for complete navigation guide.
+
+---
+
 ### Demo User Credentials
 
 | Role | Username | Password |
@@ -170,6 +253,7 @@ python src/main.py
 | (Create new account) | Any name | min 8 chars |
 
 ### Environment Configuration
+
 
 Create a `.env` file in `Cryptics_legion/` directory:
 

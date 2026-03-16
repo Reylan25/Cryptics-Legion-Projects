@@ -3,35 +3,65 @@
 Smart Expense Tracker - Main Application
 Flash-free navigation using a persistent container system.
 """
+
+# Suppress websocket deprecation warnings from Flet and Uvicorn
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", message="remove second argument")
+warnings.filterwarnings("ignore", message="is deprecated")
+
+# Suppress ALL logging errors
+import logging
+import sys
+
+# Set root logger to CRITICAL only
+logging.getLogger().setLevel(logging.CRITICAL)
+logging.getLogger("websockets").setLevel(logging.CRITICAL)
+logging.getLogger("websockets.server").setLevel(logging.CRITICAL)
+logging.getLogger("websockets.protocol").setLevel(logging.CRITICAL)
+logging.getLogger("uvicorn").setLevel(logging.CRITICAL)
+logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
+logging.getLogger("flet").setLevel(logging.CRITICAL)
+
+# Suppress stderr from websockets
+class NullHandler(logging.Handler):
+    def emit(self, record):
+        pass
+
+# Add null handler to suppress any remaining output
+for logger_name in ["websockets", "websockets.server", "websockets.protocol", "uvicorn"]:
+    logging.getLogger(logger_name).addHandler(NullHandler())
+
 import flet as ft
 from core import db
 from core.theme import get_theme, ThemeManager
 import core.auth as auth
 
 # Import view CONTENT builders (we'll create these)
-from ui.login_page import build_login_content
-from ui.register_page import build_register_content
-from ui.onboarding_page import build_onboarding_content
-from ui.forgot_password_page import create_forgot_password_view
-from ui.personal_details import build_personal_details_content
-from ui.currency_selection_page import build_currency_selection_content
-from ui.my_balance import build_my_balance_content
-from ui.home_page import build_home_content
-from ui.Expenses import build_expenses_content
-from ui.statistics_page import build_statistics_content
-from ui.profile_page import build_profile_content
-from ui.account_settings_page import build_account_settings_content
-from ui.add_expense_page import build_add_expense_content
-from ui.all_expenses_page import build_all_expenses_content
-from ui.exchange_rates_page import build_exchange_rates_content
-from ui.privacy_page import build_privacy_content
-from ui.passcode_lock_page import create_passcode_setup, create_passcode_verify
-from ui.admin_dashboard_page import AdminDashboardPage
-from ui.admin_users_page import AdminUserManagementPage
+from ui.auth.login_page import build_login_content
+from ui.auth.register_page import build_register_content
+from ui.onboarding.onboarding_page import build_onboarding_content
+from ui.auth.forgot_password_page import create_forgot_password_view
+from ui.profile.personal_details import build_personal_details_content
+from ui.user.currency_selection_page import build_currency_selection_content
+from ui.user.my_balance import build_my_balance_content
+from ui.user.home_page import build_home_content
+from ui.user.Expenses import build_expenses_content
+from ui.user.statistics_page import build_statistics_content
+from ui.profile.profile_page import build_profile_content
+from ui.profile.account_settings_page import build_account_settings_content
+from ui.user.add_expense_page import build_add_expense_content
+from ui.user.all_expenses_page import build_all_expenses_content
+from ui.user.exchange_rates_page import build_exchange_rates_content
+from ui.profile.privacy_page import build_privacy_content
+from ui.auth.passcode_lock_page import create_passcode_setup, create_passcode_verify
+from ui.admin.admin_dashboard_page import AdminDashboardPage
+from ui.admin.admin_users_page import AdminUserManagementPage
 from components.notification import NotificationHistory
-from ui.admin_logs_page import AdminLogsPage
-from ui.admin_main_layout import AdminMainLayout
-from ui.admin_profile_page import AdminProfilePage
+from ui.admin.admin_logs_page import AdminLogsPage
+from ui.admin.admin_main_layout import AdminMainLayout
+from ui.admin.admin_profile_page import AdminProfilePage
 from utils.statistics import create_charts_view
 
 
@@ -358,28 +388,28 @@ if __name__ == "__main__":
     # Uncomment the line below and comment out MODE 2 to run
     # as a native desktop application.
     # ----------------------------------------------------------
-    #ft.app(target=main, assets_dir="assets")
+    ft.app(target=main, assets_dir="assets")
 
     # ----------------------------------------------------------
     # MODE 2: WEB / LOCALHOST  (+ optional ngrok public URL)
     # Comment out MODE 1 above, then uncomment this entire block.
     # ----------------------------------------------------------
-    PORT = 8550
+    # PORT = 8550
     
-    # Optional: expose via ngrok (requires: pip install pyngrok)
-    # Get a free auth token at https://dashboard.ngrok.com
-    try:
-        from pyngrok import ngrok
-        tunnel = ngrok.connect(PORT, bind_tls=True)
-        print("\n" + "=" * 55)
-        print(f"  ngrok Public URL : {tunnel.public_url}")
-        print(f"  Local URL        : http://localhost:{PORT}")
-        print("=" * 55 + "\n")
-    except ImportError:
-        print(f"[INFO] pyngrok not installed - run: pip install pyngrok")
-        print(f"[INFO] App available at: http://localhost:{PORT}\n")
-    except BaseException as e:
-        print(f"[INFO] ngrok skipped ({type(e).__name__}: {e})")
-        print(f"[INFO] App available at: http://localhost:{PORT}\n")
+    # # Optional: expose via ngrok (requires: pip install pyngrok)
+    # # Get a free auth token at https://dashboard.ngrok.com
+    # try:
+    #     from pyngrok import ngrok
+    #     tunnel = ngrok.connect(PORT, bind_tls=True)
+    #     print("\n" + "=" * 55)
+    #     print(f"  ngrok Public URL : {tunnel.public_url}")
+    #     print(f"  Local URL        : http://localhost:{PORT}")
+    #     print("=" * 55 + "\n")
+    # except ImportError:
+    #     print(f"[INFO] pyngrok not installed - run: pip install pyngrok")
+    #     print(f"[INFO] App available at: http://localhost:{PORT}\n")
+    # except BaseException as e:
+    #     print(f"[INFO] ngrok skipped ({type(e).__name__}: {e})")
+    #     print(f"[INFO] App available at: http://localhost:{PORT}\n")
     
-    ft.app(target=main, assets_dir="assets", port=PORT, view=ft.AppView.WEB_BROWSER)
+    # ft.app(target=main, assets_dir="assets", port=PORT, view=ft.AppView.WEB_BROWSER)

@@ -122,6 +122,12 @@ def connect_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Migration: Add synced_to_qb column to expenses table for QB integration
+    try:
+        cursor.execute("ALTER TABLE expenses ADD COLUMN synced_to_qb INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     # OTP table for password reset
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS password_reset_otps (
@@ -278,12 +284,26 @@ def get_user_profile(user_id: int) -> dict:
             except:
                 photo_data = None
         
+        # Get first and last name, with fallback from full_name if not explicitly set
+        first_name = (row[3] or "").strip()
+        last_name = (row[4] or "").strip()
+        full_name = (row[2] or "").strip()
+        
+        # If first_name or last_name are empty, try to extract from full_name
+        if not first_name or not last_name:
+            if full_name:
+                full_name_parts = full_name.split(" ", 1)
+                if not first_name:
+                    first_name = full_name_parts[0]
+                if not last_name:
+                    last_name = full_name_parts[1] if len(full_name_parts) > 1 else full_name_parts[0]
+        
         return {
             "id": row[0],
             "username": row[1],
-            "full_name": (row[2] or "").strip(),
-            "first_name": (row[3] or "").strip(),
-            "last_name": (row[4] or "").strip(),
+            "full_name": full_name,
+            "first_name": first_name,
+            "last_name": last_name,
             "email": (row[5] or "").strip(),
             "phone": (row[6] or "").strip(),
             "currency": row[7] or "PHP",
@@ -465,6 +485,41 @@ def delete_expense_row(expense_id: int, user_id: int) -> bool:
     deleted = cur.rowcount
     conn.close()
     return deleted > 0
+
+
+def mark_expense_as_synced_to_qb(expense_id: int, synced: bool = True) -> bool:
+    """Mark an expense as synced to QuickBooks (synced_to_qb = 1) or not synced (0)."""
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "UPDATE expenses SET synced_to_qb = ? WHERE id = ?",
+            (1 if synced else 0, expense_id)
+        )
+        conn.commit()
+        success = cur.rowcount > 0
+        return success
+    finally:
+        conn.close()
+
+
+def mark_expenses_as_synced_batch(expense_ids: list, synced: bool = True) -> int:
+    """Mark multiple expenses as synced. Returns count of updated expenses."""
+    if not expense_ids:
+        return 0
+    
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        placeholders = ','.join('?' * len(expense_ids))
+        cur.execute(
+            f"UPDATE expenses SET synced_to_qb = ? WHERE id IN ({placeholders})",
+            [1 if synced else 0] + expense_ids
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
 
 
 # ----- Summary helpers -----
