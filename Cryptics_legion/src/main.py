@@ -52,6 +52,7 @@ from ui.user.statistics_page import build_statistics_content
 from ui.profile.profile_page import build_profile_content
 from ui.profile.account_settings_page import build_account_settings_content
 from ui.user.add_expense_page import build_add_expense_content
+from ui.user.voice_assistant_page import build_voice_assistant_content
 from ui.user.all_expenses_page import build_all_expenses_content
 from ui.user.exchange_rates_page import build_exchange_rates_content
 from ui.profile.privacy_page import build_privacy_content
@@ -230,9 +231,15 @@ def main(page: ft.Page):
         ))
     
     def show_add_expense():
+        state["show_voice_assistant"] = show_voice_assistant
         navigate_to("add_expense", lambda: build_add_expense_content(
             page, state, toast, show_expenses, show_home, 
             show_expenses, show_statistics, show_profile
+        ))
+    
+    def show_voice_assistant():
+        navigate_to("voice_assistant", lambda: build_voice_assistant_content(
+            page, state, toast, show_add_expense, show_add_expense
         ))
     
     def show_all_expenses():

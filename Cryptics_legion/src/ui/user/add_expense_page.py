@@ -1047,6 +1047,48 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
     
     description_field.on_change = on_description_change
     
+    # ============ Voice Assistant ============
+    def show_voice_assistant(e=None):
+        """Navigate to the dedicated voice assistant page."""
+        nav_fn = state.get("show_voice_assistant")
+        if nav_fn:
+            nav_fn()
+        else:
+            toast("Voice assistant not available", "#EF4444")
+    
+    # Auto-fill from voice data if returning from voice assistant
+    voice_data = state.pop("voice_expense_data", None)
+    if voice_data:
+        if voice_data.get("amount"):
+            amount_field.value = f"{voice_data['amount']:,.2f}"
+        if voice_data.get("description"):
+            description_field.value = voice_data["description"]
+        if voice_data.get("category") and voice_data["category"] != "Other":
+            cat = voice_data["category"]
+            expense_state["category"] = cat
+            category_text.value = cat
+            category_subtext.value = "🎤 Voice AI"
+            cat_icons = {
+                "Food & Dining": (ft.Icons.RESTAURANT, "#FF6B35"),
+                "Transport": (ft.Icons.DIRECTIONS_CAR, "#3B82F6"),
+                "Shopping": (ft.Icons.SHOPPING_BAG, "#EC4899"),
+                "Entertainment": (ft.Icons.MOVIE, "#8B5CF6"),
+                "Bills & Utilities": (ft.Icons.RECEIPT_LONG, "#F59E0B"),
+                "Health": (ft.Icons.MEDICAL_SERVICES, "#10B981"),
+                "Education": (ft.Icons.SCHOOL, "#6366F1"),
+                "Electronics": (ft.Icons.DEVICES, "#06B6D4"),
+                "Groceries": (ft.Icons.LOCAL_GROCERY_STORE, "#84CC16"),
+                "Rent": (ft.Icons.HOME, "#EF4444"),
+                "Travel": (ft.Icons.FLIGHT, "#14B8A6"),
+                "Subscription": (ft.Icons.SUBSCRIPTIONS, "#F43F5E"),
+            }
+            icon, color = cat_icons.get(cat, (ft.Icons.CATEGORY, "#7C3AED"))
+            expense_state["category_icon"] = icon
+            expense_state["category_color"] = color
+            category_icon_container.content = ft.Icon(icon, color="white", size=18)
+            category_icon_container.bgcolor = color
+            ai_badge.visible = True
+    
     # ============ Category Picker ============
     def show_category_picker(e):
         def select_cat(cat):
@@ -1417,7 +1459,19 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
                 on_click=lambda e: show_expenses() if show_expenses else None,
             ),
             ft.Text("Add Expense", size=18, weight=ft.FontWeight.W_600, color=theme.text_primary),
-            ft.Container(width=40),
+            ft.Container(
+                content=ft.Icon(ft.Icons.MIC, color="white", size=18),
+                width=36, height=36, border_radius=10,
+                gradient=ft.LinearGradient(
+                    colors=["#7C3AED", "#EC4899"],
+                    begin=ft.alignment.top_left,
+                    end=ft.alignment.bottom_right,
+                ),
+                alignment=ft.alignment.center,
+                on_click=show_voice_assistant,
+                tooltip="Voice Assistant",
+                ink=True,
+            ),
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
         padding=ft.padding.only(bottom=8),
     )
@@ -1597,9 +1651,39 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
         ink=True,
     )
     
+    # Voice Assistant Card
+    voice_card = ft.Container(
+        content=ft.Row([
+            ft.Container(
+                content=ft.Icon(ft.Icons.MIC, color="white", size=18),
+                width=38, height=38, border_radius=12,
+                gradient=ft.LinearGradient(
+                    colors=["#7C3AED", "#EC4899"],
+                    begin=ft.alignment.top_left,
+                    end=ft.alignment.bottom_right,
+                ),
+                alignment=ft.alignment.center,
+            ),
+            ft.Container(width=12),
+            ft.Column([
+                ft.Text("Voice Assistant", size=13, weight=ft.FontWeight.W_600, color=theme.text_primary),
+                ft.Text("Tap to add expense by speaking", size=10, color=theme.text_muted),
+            ], spacing=2, expand=True),
+            ft.Icon(ft.Icons.ARROW_FORWARD_IOS, color=theme.text_muted, size=14),
+        ]),
+        bgcolor=theme.bg_card,
+        border_radius=14,
+        padding=14,
+        border=ft.border.all(1, "#7C3AED30"),
+        on_click=show_voice_assistant,
+        ink=True,
+    )
+    
     # Main content
     scrollable = ft.Column([
         amount_card,
+        ft.Container(height=10),
+        voice_card,
         ft.Container(height=10),
         description_card,
         ft.Container(height=10),
