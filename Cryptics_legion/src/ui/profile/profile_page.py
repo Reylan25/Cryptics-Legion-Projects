@@ -2,6 +2,7 @@
 import flet as ft
 from core import db
 from core.theme import ThemeManager, get_theme
+from utils.gamification import XPEngine
 from utils.currency import format_currency, get_currency_from_user_profile
 
 
@@ -351,7 +352,7 @@ def create_profile_view(page: ft.Page, state: dict, toast, go_back, logout_callb
 
 # ============ NEW: Content builder for flash-free navigation ============
 def build_profile_content(page: ft.Page, state: dict, toast, 
-                           go_back, logout_callback, show_account_settings, refresh_app, show_privacy=None):
+                           go_back, logout_callback, show_account_settings, refresh_app, show_privacy=None, show_reminders=None, show_badges=None):
     """
     Builds and returns profile page content WITHOUT calling page.clean() or page.add().
     """
@@ -388,6 +389,10 @@ def build_profile_content(page: ft.Page, state: dict, toast,
     # Avatar
     avatar = create_user_avatar(state["user_id"], radius=50, theme=theme)
     
+    # Get Gamification Level
+    xp_data = XPEngine.get_progress(state["user_id"])
+    level_title = f"{xp_data['icon']} Level {xp_data['level']} • {xp_data['title']}"
+    
     # Profile section
     profile_section = ft.Container(
         content=ft.Column(
@@ -395,7 +400,7 @@ def build_profile_content(page: ft.Page, state: dict, toast,
                 avatar,
                 ft.Container(height=16),
                 ft.Text(display_name, size=22, weight=ft.FontWeight.BOLD, color=theme.text_primary),
-                ft.Text("Premium Member", size=12, color=theme.accent_primary),
+                ft.Text(level_title, size=12, color=theme.accent_primary, weight=ft.FontWeight.W_500),
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         ),
@@ -485,7 +490,11 @@ def build_profile_content(page: ft.Page, state: dict, toast,
             menu_item(ft.Icons.SHIELD_OUTLINED, "Personal data & Privacy", "Privacy policy and data management",
                       lambda e: show_privacy() if show_privacy else None),
             ft.Container(height=8),
-            menu_item(ft.Icons.NOTIFICATIONS, "Notifications", "Manage alerts"),
+            menu_item(ft.Icons.EMOJI_EVENTS_ROUNDED, "Badges & Achievements", "View your unlocked badges",
+                      lambda e: show_badges() if show_badges else None),
+            ft.Container(height=8),
+            menu_item(ft.Icons.NOTIFICATIONS, "Reminders & Alerts", "Manage notifications and budget alerts",
+                      lambda e: show_reminders() if show_reminders else None),
             ft.Container(height=8),
             ft.Container(
                 content=ft.Row(

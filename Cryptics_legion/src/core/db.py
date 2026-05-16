@@ -183,6 +183,94 @@ def connect_db():
     )
     """)
 
+    # Reminders table — user reminder preferences
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        time TEXT DEFAULT '20:00',
+        threshold REAL DEFAULT 20.0,
+        days_inactive INTEGER DEFAULT 3,
+        custom_message TEXT DEFAULT '',
+        last_triggered TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+
+    # Recurring expenses table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS recurring_expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        category TEXT NOT NULL DEFAULT 'Other',
+        due_day INTEGER NOT NULL DEFAULT 1,
+        frequency TEXT NOT NULL DEFAULT 'monthly',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        last_reminded TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+    # ── Gamification tables ──
+
+    # Daily streaks
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_streaks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        current_streak INTEGER NOT NULL DEFAULT 0,
+        longest_streak INTEGER NOT NULL DEFAULT 0,
+        last_active_date TEXT,
+        streak_freezes INTEGER NOT NULL DEFAULT 1,
+        total_days_active INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+
+    # Unlocked badges
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_badges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        badge_id TEXT NOT NULL,
+        unlocked_at TEXT NOT NULL,
+        seen INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        UNIQUE(user_id, badge_id)
+    )
+    """)
+
+    # XP and levels
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_xp (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        total_xp INTEGER NOT NULL DEFAULT 0,
+        level INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+
+    # Weekly challenges
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS weekly_challenges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        challenge_type TEXT NOT NULL,
+        target_value REAL NOT NULL,
+        current_value REAL NOT NULL DEFAULT 0,
+        xp_reward INTEGER NOT NULL DEFAULT 50,
+        week_start TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+
     conn.commit()
     return conn
 
@@ -1898,3 +1986,389 @@ def get_unread_notification_count(user_id):
     """, (user_id,))
     
     return cursor.fetchone()[0]
+
+
+# ----- REMINDER CRUD -----
+def get_user_reminders(user_id: int) -> list:
+    """Get all reminders for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, type, enabled, time, threshold, days_inactive, custom_message, last_triggered, created_at FROM reminders WHERE user_id = ? ORDER BY created_at ASC", (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_reminder_by_type(user_id: int, reminder_type: str):
+    """Get a specific reminder by type for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, type, enabled, time, threshold, days_inactive, custom_message, last_triggered, created_at FROM reminders WHERE user_id = ? AND type = ?", (user_id, reminder_type))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def upsert_reminder(user_id: int, reminder_type: str, enabled: bool = True, time_str: str = "20:00",
+                    threshold: float = 20.0, days_inactive: int = 3, custom_message: str = "") -> int:
+    """Insert or update a reminder for a user. Returns the reminder ID."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    # Check if exists
+    cur.execute("SELECT id FROM reminders WHERE user_id = ? AND type = ?", (user_id, reminder_type))
+    existing = cur.fetchone()
+    
+    if existing:
+        cur.execute("""
+            UPDATE reminders SET enabled = ?, time = ?, threshold = ?, days_inactive = ?, custom_message = ?
+            WHERE id = ?
+        """, (1 if enabled else 0, time_str, threshold, days_inactive, custom_message, existing[0]))
+        rid = existing[0]
+    else:
+        cur.execute("""
+            INSERT INTO reminders (user_id, type, enabled, time, threshold, days_inactive, custom_message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, reminder_type, 1 if enabled else 0, time_str, threshold, days_inactive, custom_message,
+              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        rid = cur.lastrowid
+    
+    conn.commit()
+    conn.close()
+    return rid
+
+
+def update_reminder_last_triggered(reminder_id: int):
+    """Update the last_triggered timestamp for a reminder."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE reminders SET last_triggered = ? WHERE id = ?",
+                (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), reminder_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_reminder(reminder_id: int, user_id: int) -> bool:
+    """Delete a reminder."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM reminders WHERE id = ? AND user_id = ?", (reminder_id, user_id))
+    conn.commit()
+    deleted = cur.rowcount
+    conn.close()
+    return deleted > 0
+
+
+def init_default_reminders(user_id: int):
+    """Initialize default reminders for a new user (if none exist)."""
+    existing = get_user_reminders(user_id)
+    if not existing:
+        upsert_reminder(user_id, "daily_expense", enabled=True, time_str="20:00")
+        upsert_reminder(user_id, "budget_warning", enabled=True, threshold=20.0)
+        upsert_reminder(user_id, "weekly_summary", enabled=True, time_str="09:00")
+        upsert_reminder(user_id, "idle_reminder", enabled=True, days_inactive=3)
+        upsert_reminder(user_id, "recurring_expense", enabled=True)
+
+
+# ----- RECURRING EXPENSE CRUD -----
+def get_recurring_expenses(user_id: int) -> list:
+    """Get all recurring expenses for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, name, amount, category, due_day, frequency, enabled, last_reminded, created_at
+        FROM recurring_expenses WHERE user_id = ? ORDER BY due_day ASC
+    """, (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def insert_recurring_expense(user_id: int, name: str, amount: float, category: str,
+                             due_day: int, frequency: str = "monthly") -> int:
+    """Insert a new recurring expense. Returns the ID."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO recurring_expenses (user_id, name, amount, category, due_day, frequency, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, name, amount, category, due_day, frequency,
+          datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    conn.commit()
+    rid = cur.lastrowid
+    conn.close()
+    return rid
+
+
+def update_recurring_expense(expense_id: int, user_id: int, **fields) -> bool:
+    """Update a recurring expense."""
+    conn = connect_db()
+    cur = conn.cursor()
+    
+    updates = []
+    values = []
+    allowed = ["name", "amount", "category", "due_day", "frequency", "enabled"]
+    for field, value in fields.items():
+        if field in allowed:
+            updates.append(f"{field} = ?")
+            values.append(value)
+    
+    if not updates:
+        conn.close()
+        return False
+    
+    values.extend([expense_id, user_id])
+    cur.execute(f"UPDATE recurring_expenses SET {', '.join(updates)} WHERE id = ? AND user_id = ?", values)
+    conn.commit()
+    updated = cur.rowcount
+    conn.close()
+    return updated > 0
+
+
+def delete_recurring_expense(expense_id: int, user_id: int) -> bool:
+    """Delete a recurring expense."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM recurring_expenses WHERE id = ? AND user_id = ?", (expense_id, user_id))
+    conn.commit()
+    deleted = cur.rowcount
+    conn.close()
+    return deleted > 0
+
+
+def update_recurring_last_reminded(expense_id: int):
+    """Update the last_reminded timestamp for a recurring expense."""
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE recurring_expenses SET last_reminded = ? WHERE id = ?",
+                (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), expense_id))
+    conn.commit()
+    conn.close()
+
+
+def get_last_expense_date(user_id: int) -> str:
+    """Get the date of the most recent expense for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT date FROM expenses WHERE user_id = ? ORDER BY date DESC LIMIT 1", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def get_today_expense_count(user_id: int) -> int:
+    """Get the number of expenses logged today."""
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM expenses WHERE user_id = ? AND date LIKE ?", (user_id, f"{today}%"))
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_weekly_total(user_id: int) -> float:
+    """Get total expenses for the current week (Monday to Sunday)."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    start_of_week = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT SUM(amount) FROM expenses WHERE user_id = ? AND date >= ?", (user_id, start_of_week))
+    total = cur.fetchone()[0]
+    conn.close()
+    return float(total) if total else 0.0
+
+
+# ───── GAMIFICATION CRUD ─────
+
+def get_user_streak(user_id: int) -> dict:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT current_streak, longest_streak, last_active_date, streak_freezes, total_days_active FROM user_streaks WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return {"current": row[0], "longest": row[1], "last_active": row[2], "freezes": row[3], "total_days": row[4]}
+    return {"current": 0, "longest": 0, "last_active": None, "freezes": 1, "total_days": 0}
+
+
+def update_user_streak(user_id: int, current: int, longest: int, last_active: str, freezes: int, total_days: int):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM user_streaks WHERE user_id = ?", (user_id,))
+    if cur.fetchone():
+        cur.execute("UPDATE user_streaks SET current_streak=?, longest_streak=?, last_active_date=?, streak_freezes=?, total_days_active=? WHERE user_id=?",
+                    (current, longest, last_active, freezes, total_days, user_id))
+    else:
+        cur.execute("INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_active_date, streak_freezes, total_days_active) VALUES (?,?,?,?,?,?)",
+                    (user_id, current, longest, last_active, freezes, total_days))
+    conn.commit()
+    conn.close()
+
+
+def get_user_badges(user_id: int) -> list:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT badge_id, unlocked_at, seen FROM user_badges WHERE user_id = ? ORDER BY unlocked_at DESC", (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def unlock_badge(user_id: int, badge_id: str) -> bool:
+    from datetime import datetime
+    conn = connect_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO user_badges (user_id, badge_id, unlocked_at) VALUES (?, ?, ?)",
+                    (user_id, badge_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        conn.close()
+        return False
+
+
+def has_badge(user_id: int, badge_id: str) -> bool:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM user_badges WHERE user_id = ? AND badge_id = ?", (user_id, badge_id))
+    result = cur.fetchone() is not None
+    conn.close()
+    return result
+
+
+def mark_badges_seen(user_id: int):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE user_badges SET seen = 1 WHERE user_id = ? AND seen = 0", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_unseen_badges(user_id: int) -> list:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT badge_id FROM user_badges WHERE user_id = ? AND seen = 0", (user_id,))
+    rows = [r[0] for r in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_user_xp(user_id: int) -> dict:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT total_xp, level FROM user_xp WHERE user_id = ?", (user_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return {"xp": row[0], "level": row[1]}
+    return {"xp": 0, "level": 1}
+
+
+def add_user_xp(user_id: int, amount: int) -> dict:
+    """Add XP and recalculate level. Returns {xp, level, leveled_up}."""
+    LEVELS = [0, 100, 300, 600, 1000, 1500, 2500, 4000, 6000, 10000]
+    
+    data = get_user_xp(user_id)
+    new_xp = data["xp"] + amount
+    old_level = data["level"]
+    
+    # Calculate new level
+    new_level = 1
+    for i, threshold in enumerate(LEVELS):
+        if new_xp >= threshold:
+            new_level = i + 1
+    new_level = min(new_level, 10)
+    
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM user_xp WHERE user_id = ?", (user_id,))
+    if cur.fetchone():
+        cur.execute("UPDATE user_xp SET total_xp = ?, level = ? WHERE user_id = ?", (new_xp, new_level, user_id))
+    else:
+        cur.execute("INSERT INTO user_xp (user_id, total_xp, level) VALUES (?, ?, ?)", (user_id, new_xp, new_level))
+    conn.commit()
+    conn.close()
+    
+    return {"xp": new_xp, "level": new_level, "leveled_up": new_level > old_level}
+
+
+def get_active_challenges(user_id: int) -> list:
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, challenge_type, target_value, current_value, xp_reward, completed FROM weekly_challenges WHERE user_id = ? AND week_start = ?",
+                (user_id, week_start))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_all_challenges(user_id: int) -> list:
+    """Get all challenges (active and completed) for a user."""
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, challenge_type, target_value, current_value, xp_reward, completed, week_start FROM weekly_challenges WHERE user_id = ? ORDER BY week_start DESC, completed ASC",
+                (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def upsert_challenge(user_id: int, challenge_type: str, target: float, xp: int = 50):
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM weekly_challenges WHERE user_id = ? AND challenge_type = ? AND week_start = ?",
+                (user_id, challenge_type, week_start))
+    if not cur.fetchone():
+        cur.execute("INSERT INTO weekly_challenges (user_id, challenge_type, target_value, xp_reward, week_start) VALUES (?,?,?,?,?)",
+                    (user_id, challenge_type, target, xp, week_start))
+    conn.commit()
+    conn.close()
+
+
+def update_challenge_progress(challenge_id: int, value: float):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE weekly_challenges SET current_value = ? WHERE id = ?", (value, challenge_id))
+    conn.commit()
+    conn.close()
+
+
+def complete_challenge(challenge_id: int):
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE weekly_challenges SET completed = 1 WHERE id = ?", (challenge_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_expense_count_by_user(user_id: int) -> int:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM expenses WHERE user_id = ?", (user_id,))
+    count = cur.fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_unique_categories_used(user_id: int) -> int:
+    conn = connect_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(DISTINCT category) FROM expenses WHERE user_id = ?", (user_id,))
+    count = cur.fetchone()[0]
+    conn.close()
+    return count

@@ -55,6 +55,8 @@ from ui.user.add_expense_page import build_add_expense_content
 from ui.user.voice_assistant_page import build_voice_assistant_content
 from ui.user.all_expenses_page import build_all_expenses_content
 from ui.user.exchange_rates_page import build_exchange_rates_content
+from ui.user.reminders_page import build_reminders_content
+from ui.user.badges_page import build_badges_content
 from ui.profile.privacy_page import build_privacy_content
 from ui.auth.passcode_lock_page import create_passcode_setup, create_passcode_verify
 from ui.admin.admin_dashboard_page import AdminDashboardPage
@@ -64,6 +66,8 @@ from ui.admin.admin_logs_page import AdminLogsPage
 from ui.admin.admin_main_layout import AdminMainLayout
 from ui.admin.admin_profile_page import AdminProfilePage
 from utils.statistics import create_charts_view
+from utils.reminders import ReminderEngine
+from utils.gamification import on_user_login
 
 
 def main(page: ft.Page):
@@ -192,9 +196,23 @@ def main(page: ft.Page):
     
     def show_home():
         print("DEBUG: show_home() called")
+        # Trigger gamification daily login logic
+        if "user_id" in state and state["user_id"]:
+            login_events = on_user_login(state["user_id"])
+            if login_events.get("xp_gained", 0) > 0:
+                print(f"[Gamification] Daily login! +{login_events['xp_gained']} XP. Streak: {login_events['streak']}")
+            for badge in login_events.get("new_badges", []):
+                # Avoid toast() before navigate_to() due to Flet SnackBar race conditions
+                try:
+                    from components.notification import show_success_notification
+                    show_success_notification(page, f"🏆 New Badge Unlocked!", title="Achievement")
+                except ImportError:
+                    pass
+        
         navigate_to("home", lambda: build_home_content(
             page, state, toast, show_expenses, do_logout, 
-            show_statistics, show_profile, show_add_expense, show_all_expenses
+            show_statistics, show_profile, show_add_expense, show_all_expenses,
+            show_reminders=show_reminders
         ))
     
     def show_expenses():
@@ -204,6 +222,7 @@ def main(page: ft.Page):
         ))
     
     def show_statistics():
+        state["refresh_statistics"] = show_statistics
         navigate_to("statistics", lambda: build_statistics_content(
             page, state, toast, show_home, show_expenses, 
             show_profile, show_add_expense, show_exchange_rates
@@ -217,7 +236,8 @@ def main(page: ft.Page):
     def show_profile():
         navigate_to("profile", lambda: build_profile_content(
             page, state, toast, show_home, do_logout, 
-            show_account_settings, refresh_current_view, show_privacy
+            show_account_settings, refresh_current_view, show_privacy,
+            show_reminders=show_reminders, show_badges=show_badges
         ))
     
     def show_account_settings():
@@ -240,6 +260,16 @@ def main(page: ft.Page):
     def show_voice_assistant():
         navigate_to("voice_assistant", lambda: build_voice_assistant_content(
             page, state, toast, show_add_expense, show_add_expense
+        ))
+    
+    def show_reminders():
+        navigate_to("reminders", lambda: build_reminders_content(
+            page, state, toast, show_home
+        ))
+        
+    def show_badges():
+        navigate_to("badges", lambda: build_badges_content(
+            page, state, toast, show_profile
         ))
     
     def show_all_expenses():
@@ -297,6 +327,14 @@ def main(page: ft.Page):
             state["is_admin"] = False
             state["admin"] = None
             
+            # Start reminder engine for this user
+            try:
+                reminder_engine = ReminderEngine(page, user_id)
+                reminder_engine.start()
+                state["_reminder_engine"] = reminder_engine
+            except Exception as e:
+                print(f"Reminder engine start note: {e}")
+            
             # Check if user has a passcode set up
             if db.has_passcode(user_id):
                 # Show passcode verification before entering app
@@ -329,12 +367,21 @@ def main(page: ft.Page):
     
     def do_logout():
         """Handle logout."""
+        # Stop reminder engine
+        if "_reminder_engine" in state:
+            try:
+                state["_reminder_engine"].stop()
+            except Exception:
+                pass
+            del state["_reminder_engine"]
+        
         # Save notification read states before clearing
         NotificationHistory.on_user_logout()
         
-        # Clear user session
+        # Clear user session and voice greeting flag
         state["user_id"] = None
         state["editing_id"] = None
+        state.pop("_voice_greeting_shown", None)
         show_login()
 
     # ============ REFRESH FUNCTIONS ============
@@ -353,6 +400,7 @@ def main(page: ft.Page):
             "account_settings": show_account_settings,
             "privacy": show_privacy,
             "add_expense": show_add_expense,
+            "reminders": show_reminders,
         }
         current = state.get("current_view", "login")
         if current in view_map:

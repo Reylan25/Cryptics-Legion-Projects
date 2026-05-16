@@ -835,7 +835,7 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     user_currency = get_currency_from_user_profile(user_profile)
     
     # State for period and chart type selection
-    selected_period = {"value": "1M"}
+    selected_period = state.get("stats_period", "1M")
     selected_chart = {"value": "pie"}  # "pie", "bar_daily", "bar_weekly", "bar_monthly"
     
     # Get user profile for avatar
@@ -894,7 +894,7 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     )
     
     # Get comprehensive statistics
-    stats = get_statistics_summary(user_id, selected_period["value"])
+    stats = get_statistics_summary(user_id, selected_period)
     trend = stats["trend"]
     top_categories = stats["top_categories"]
     
@@ -972,24 +972,26 @@ def build_statistics_content(page: ft.Page, state: dict, toast,
     
     # Period selector
     def on_period_change(period):
-        selected_period["value"] = period
-        # Refresh the page content
-        page.update()
+        state["stats_period"] = period
+        if "refresh_statistics" in state:
+            state["refresh_statistics"]()
+        else:
+            page.update()
     
     period_buttons = ft.Row(
         controls=[
-            _create_period_chip("1W", selected_period["value"], on_period_change, theme),
-            _create_period_chip("1M", selected_period["value"], on_period_change, theme),
-            _create_period_chip("3M", selected_period["value"], on_period_change, theme),
-            _create_period_chip("6M", selected_period["value"], on_period_change, theme),
-            _create_period_chip("1Y", selected_period["value"], on_period_change, theme),
+            _create_period_chip("1W", selected_period, on_period_change, theme),
+            _create_period_chip("1M", selected_period, on_period_change, theme),
+            _create_period_chip("3M", selected_period, on_period_change, theme),
+            _create_period_chip("6M", selected_period, on_period_change, theme),
+            _create_period_chip("1Y", selected_period, on_period_change, theme),
         ],
         alignment=ft.MainAxisAlignment.CENTER,
         spacing=8,
     )
     
     # Create Pie Chart with colors
-    expense_summary = get_expense_summary_by_period(user_id, selected_period["value"])
+    expense_summary = get_expense_summary_by_period(user_id, selected_period)
     total = sum(row[1] for row in expense_summary) if expense_summary else 0
     
     pie_sections = []
@@ -1600,18 +1602,23 @@ def _create_insight_badges(stats, user_currency, theme):
             "title": "Avg/Day",
             "value": format_currency(get_average_daily_spending(stats.get("user_id", 1)), user_currency),
             "color": "#3B82F6",
+            "detail": "This is your average daily spending over the last 30 days."
         },
         {
             "icon": "📈",
             "title": "Trend",
             "value": "Up" if stats.get("trend", {}).get("trend") == "up" else "Down",
             "color": "#EF4444" if stats.get("trend", {}).get("trend") == "up" else "#10B981",
+            "detail": "Your spending is trending {} compared to the previous period.".format(
+                "UP" if stats.get("trend", {}).get("trend") == "up" else "DOWN"
+            )
         },
         {
             "icon": "🎯",
             "title": "Budget Status",
             "value": "On Track",
             "color": "#10B981",
+            "detail": "You are currently on track with your budget goals!"
         }
     ]
     
@@ -1632,6 +1639,12 @@ def _create_insight_badges(stats, user_currency, theme):
                 bgcolor=f"{metric['color']}10",
                 border=ft.border.all(1, f"{metric['color']}30"),
                 expand=True,
+                ink=True,
+                on_click=lambda e, m=metric: (
+                    e.page.show_snack_bar(
+                        ft.SnackBar(content=ft.Text(m["detail"]), bgcolor=m["color"])
+                    ) if hasattr(e.page, "show_snack_bar") else None
+                ),
             )
         )
     

@@ -7,6 +7,7 @@ from ui.components.nav_bar_buttom import create_page_with_nav
 from utils.currency import format_currency, format_currency_short, get_currency_from_user_profile, get_currency_symbol
 from components.notification import NotificationCenter, NotificationHistory
 from components.enhanced_icons import EnhancedIcon, CategoryIcon, EnhancedIconButton
+from utils.gamification import StreakManager, XPEngine, ChallengeManager, BadgeEngine
 import random
 import math
 
@@ -1032,7 +1033,8 @@ def create_home_view(page: ft.Page, state: dict, toast, show_dashboard, logout_c
 # ============ NEW: Content builder for flash-free navigation ============
 def build_home_content(page: ft.Page, state: dict, toast, 
                        show_dashboard, logout_callback, show_wallet_cb, 
-                       show_profile_cb, show_add_expense_cb, show_all_expenses_cb=None):
+                       show_profile_cb, show_add_expense_cb, show_all_expenses_cb=None,
+                       show_reminders=None):
     """
     Builds and returns home page content WITHOUT calling page.clean() or page.add().
     This is for flash-free navigation where main.py swaps container content.
@@ -1192,21 +1194,43 @@ def build_home_content(page: ft.Page, state: dict, toast,
     # Create avatar
     user_avatar = create_user_avatar(state["user_id"], radius=22, theme=theme)
     
-    # Header
+    # Get gamification data
+    streak_data = db.get_user_streak(state["user_id"])
+    streak_visual = StreakManager.get_streak_visual(streak_data["current"])
+    xp_data = XPEngine.get_progress(state["user_id"])
+    challenges = ChallengeManager.get_challenges_display(state["user_id"])
+    
+    # ── Header ──
     header = ft.Container(
-        content=ft.Row(
+        content=ft.Column(
             controls=[
-                ft.Column(
-                    controls=[
-                        ft.Text(f"{greeting},", size=13, color=theme.text_secondary, weight=ft.FontWeight.W_400),
-                        ft.Text(first_name, size=22, weight=ft.FontWeight.BOLD, color=theme.text_primary),
-                    ],
-                    spacing=0,
-                    horizontal_alignment=ft.CrossAxisAlignment.START,
-                ),
                 ft.Row(
                     controls=[
-                        notification_center.create_bell_icon(),
+                        ft.Column(
+                            controls=[
+                                ft.Text(f"{greeting},", size=13, color=theme.text_secondary, weight=ft.FontWeight.W_400),
+                                ft.Row([
+                                    ft.Text(first_name, size=22, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                                    # Streak Counter
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Text(streak_visual["emoji"], size=14),
+                                            ft.Text(str(streak_data["current"]), size=14, weight=ft.FontWeight.BOLD, color=streak_visual["color"]),
+                                        ], spacing=2),
+                                        bgcolor=f"{streak_visual['color']}15",
+                                        padding=ft.padding.symmetric(horizontal=8, vertical=2),
+                                        border_radius=12,
+                                        border=ft.border.all(1, f"{streak_visual['color']}30"),
+                                        tooltip=f"Current Streak: {streak_data['current']} days",
+                                    ),
+                                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                            ],
+                            spacing=0,
+                            horizontal_alignment=ft.CrossAxisAlignment.START,
+                        ),
+                        ft.Row(
+                            controls=[
+                                notification_center.create_bell_icon(),
                         ft.Container(
                             content=ft.Column(
                                 controls=[
@@ -1235,6 +1259,25 @@ def build_home_content(page: ft.Page, state: dict, toast,
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         ),
+        
+        # XP Progress Bar
+        ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Text(f"{xp_data['icon']} Level {xp_data['level']}: {xp_data['title']}", size=11, color=theme.text_secondary, weight=ft.FontWeight.W_500),
+                    ft.Text(f"{xp_data['total_xp']} / {xp_data['total_xp'] + xp_data['xp_needed']} XP", size=10, color=theme.text_muted),
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.ProgressBar(
+                    value=xp_data['progress'],
+                    color="#F59E0B" if xp_data['level'] >= 10 else theme.accent_primary,
+                    bgcolor=theme.border_primary,
+                    height=4,
+                    border_radius=2,
+                ),
+            ], spacing=2),
+            padding=ft.padding.only(top=12),
+        ),
+        ], spacing=0),
         padding=ft.padding.only(top=20, bottom=16),
     )
     
@@ -1245,6 +1288,47 @@ def build_home_content(page: ft.Page, state: dict, toast,
         account_name=account_name,
         user_currency=user_currency,
     )
+    
+    # Tip card
+    tips = [
+        ("Track every expense!", "Small purchases add up fast."),
+        ("Set a weekly budget", "Helps you stay on track."),
+        ("Review monthly", "Spot trends in your spending."),
+    ]
+    tip = random.choice(tips)
+    
+    # Check for budget warnings
+    warning_banner = ft.Container(visible=False)
+    if original_budget > 0:
+        pct = current_balance / original_budget
+        
+        # Get threshold from DB
+        threshold_val = 20.0
+        rem_data = db.get_reminder_by_type(state["user_id"], "budget_warning")
+        if rem_data and rem_data[2]: # If enabled
+            threshold_val = rem_data[4]
+            
+        if pct <= (threshold_val / 100):
+            is_critical = pct <= 0.05
+            color = "#EF4444" if is_critical else "#F59E0B"
+            icon = ft.Icons.REPORT_ROUNDED if is_critical else ft.Icons.WARNING_ROUNDED
+            title = "CRITICAL ALERT" if is_critical else "Low Balance Warning"
+            msg = f"{account_name} is at {int(pct*100)}% of its budget!"
+            
+            warning_banner = ft.Container(
+                content=ft.Row([
+                    ft.Icon(icon, color="white", size=24),
+                    ft.Column([
+                        ft.Text(title, size=13, weight=ft.FontWeight.BOLD, color="white"),
+                        ft.Text(msg, size=11, color="white"),
+                    ], spacing=0, expand=True),
+                ]),
+                bgcolor=color,
+                padding=12,
+                border_radius=12,
+                margin=ft.margin.only(bottom=16),
+                shadow=ft.BoxShadow(spread_radius=0, blur_radius=10, color=f"{color}60"),
+            )
     
     gauge_section = ft.Container(
         content=gauge,
@@ -1284,6 +1368,177 @@ def build_home_content(page: ft.Page, state: dict, toast,
         padding=16,
         border=ft.border.all(1, theme.border_primary),
     )
+    def show_gamification_hub(e):
+        xp_data = XPEngine.get_progress(state["user_id"])
+        badges = BadgeEngine.get_all_badges_status(state["user_id"])
+        unlocked_badges = [b for b in badges if b["unlocked"]]
+        history = ChallengeManager.get_challenge_history_display(state["user_id"])
+        
+        content_col = ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, spacing=16)
+        
+        # 1. Level & XP
+        content_col.controls.append(
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("Your Progress", size=18, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                    ft.Row([
+                        ft.Text(f"{xp_data['icon']} Level {xp_data['level']}: {xp_data['title']}", size=14, color=theme.text_secondary, weight=ft.FontWeight.W_500),
+                        ft.Text(f"{xp_data['total_xp']} XP", size=14, color=theme.accent_primary, weight=ft.FontWeight.BOLD),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.ProgressBar(value=xp_data['progress'], color=theme.accent_primary, bgcolor=theme.border_primary, height=6, border_radius=3),
+                ]),
+                padding=16, bgcolor=theme.bg_card, border_radius=12
+            )
+        )
+        
+        # 2. Badges
+        badge_rows = []
+        for b in unlocked_badges[:4]: # Show max 4
+            badge_rows.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(b["icon"], size=24),
+                        ft.Text(b["title"], size=10, color=theme.text_primary, text_align=ft.TextAlign.CENTER)
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                    width=70, padding=8, bgcolor=theme.bg_elevated, border_radius=8
+                )
+            )
+        if badge_rows:
+            content_col.controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Text("Recent Badges", size=16, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                            ft.Icon(ft.Icons.MILITARY_TECH, color="#F59E0B", size=18)
+                        ]),
+                        ft.Row(badge_rows, scroll=ft.ScrollMode.AUTO),
+                    ]),
+                    padding=16, bgcolor=theme.bg_card, border_radius=12
+                )
+            )
+            
+        # 3. Active Challenges
+        active_controls = []
+        for ch in challenges:
+            is_done = ch["completed"]
+            color = "#10B981" if is_done else theme.accent_primary
+            active_controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.CHECK_CIRCLE if is_done else ft.Icons.RADIO_BUTTON_UNCHECKED, color=color, size=16),
+                            ft.Text(ch["desc"], size=12, color=theme.text_primary, weight=ft.FontWeight.W_500, expand=True),
+                            ft.Text(f"+{ch['xp']} XP", size=11, color="#F59E0B", weight=ft.FontWeight.BOLD),
+                        ]),
+                        ft.ProgressBar(value=ch["progress"], color=color, bgcolor=theme.bg_elevated, height=4, border_radius=2) if not is_done else ft.Container(),
+                    ], spacing=4),
+                    margin=ft.margin.only(bottom=8),
+                )
+            )
+        if active_controls:
+            content_col.controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text("Current Challenges", size=16, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                        *active_controls
+                    ]),
+                    padding=16, bgcolor=theme.bg_card, border_radius=12
+                )
+            )
+
+        # 4. History
+        history_controls = []
+        for week_start, w_challenges in history.items():
+            completed_ch = [c for c in w_challenges if c["completed"]]
+            if not completed_ch: continue
+            
+            history_controls.append(ft.Text(f"Week of {week_start}", size=12, color=theme.text_secondary, weight=ft.FontWeight.BOLD))
+            for ch in completed_ch:
+                history_controls.append(
+                    ft.Row([
+                        ft.Icon(ft.Icons.EMOJI_EVENTS, color="#F59E0B", size=16),
+                        ft.Text(ch["desc"], size=12, color=theme.text_primary, expand=True),
+                        ft.Text(f"+{ch['xp']} XP", size=11, color="#10B981"),
+                    ])
+                )
+                
+        if history_controls:
+            content_col.controls.append(
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text("Challenge History", size=16, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                        *history_controls
+                    ]),
+                    padding=16, bgcolor=theme.bg_card, border_radius=12
+                )
+            )
+        else:
+            content_col.controls.append(
+                ft.Container(
+                    content=ft.Text("No completed past challenges yet.", size=14, color=theme.text_secondary, text_align=ft.TextAlign.CENTER),
+                    padding=16, alignment=ft.alignment.center
+                )
+            )
+            
+        bs = ft.BottomSheet(
+            ft.Container(
+                content=content_col,
+                padding=24,
+                bgcolor=theme.bg_primary,
+                border_radius=ft.border_radius.only(top_left=20, top_right=20),
+            )
+        )
+        page.open(bs)
+
+    # ── Weekly Challenges Card ──
+    challenge_controls = []
+    for ch in challenges:
+        is_done = ch["completed"]
+        color = "#10B981" if is_done else theme.accent_primary
+        challenge_controls.append(
+            ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.CHECK_CIRCLE if is_done else ft.Icons.RADIO_BUTTON_UNCHECKED, color=color, size=16),
+                        ft.Text(ch["desc"], size=12, color=theme.text_primary, weight=ft.FontWeight.W_500, expand=True),
+                        ft.Text(f"+{ch['xp']} XP", size=11, color="#F59E0B", weight=ft.FontWeight.BOLD),
+                    ]),
+                    ft.ProgressBar(
+                        value=ch["progress"],
+                        color=color,
+                        bgcolor=theme.bg_elevated,
+                        height=4,
+                        border_radius=2,
+                    ) if not is_done else ft.Container(),
+                ], spacing=4),
+                margin=ft.margin.only(bottom=8),
+            )
+        )
+    
+    challenge_card = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Row([
+                    ft.Icon(ft.Icons.TRACK_CHANGES, color="#8B5CF6", size=16),
+                    ft.Text("Weekly Challenges", size=14, weight=ft.FontWeight.BOLD, color=theme.text_primary),
+                ], spacing=6),
+                ft.IconButton(
+                    icon=ft.Icons.MORE_HORIZ,
+                    icon_color=theme.text_secondary,
+                    icon_size=20,
+                    on_click=show_gamification_hub,
+                    tooltip="View Gamification Profile & History"
+                )
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Container(height=4),
+            *challenge_controls,
+        ]),
+        padding=16,
+        bgcolor=theme.bg_card,
+        border_radius=16,
+        border=ft.border.all(1, "#8B5CF640"),
+        margin=ft.margin.only(top=4, bottom=16),
+    ) if challenges else ft.Container()
     
     # Expenses header
     expenses_header = ft.Container(
@@ -1311,10 +1566,12 @@ def build_home_content(page: ft.Page, state: dict, toast,
     # Scrollable content
     scrollable_content = ft.Column(
         controls=[
+            warning_banner,
             gauge_section,
             ft.Container(height=16),
             tip_card,
-            ft.Container(height=24),
+            challenge_card,
+            ft.Container(height=8),
             expenses_header,
             ft.Container(height=8),
             expenses_list,

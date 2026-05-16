@@ -7,6 +7,7 @@ from utils.brand_recognition import identify_brand, get_brand_suggestions
 from utils.currency import get_currency_symbol
 from utils.currency_exchange import get_exchange_api
 from components.notification import ImmersiveNotification
+from utils.gamification import on_expense_logged
 
 
 # Category options
@@ -1443,6 +1444,25 @@ def build_add_expense_content(page: ft.Page, state: dict, toast, go_back,
                 "success",
                 title="Expense Saved! 💰"
             )
+            
+        # ── Trigger Gamification Hook ──
+        # Check if this came from the voice assistant
+        via_voice = bool(state.get("voice_expense_data"))
+        events = on_expense_logged(state["user_id"], via_voice=via_voice)
+        
+        # Clear voice data if it existed
+        if "voice_expense_data" in state:
+            state.pop("voice_expense_data", None)
+        
+        # We use ImmersiveNotification for rewards to avoid Flet SnackBar navigation race conditions
+        if events.get("leveled_up"):
+            notif.show(f"🎉 Level Up! You reached Level {events['new_level']}!", "success", title="Level Up!")
+        elif events.get("new_badges"):
+            for b in events["new_badges"]:
+                notif.show(f"🏆 New Badge Unlocked!", "success", title="Achievement Unlocked!")
+        else:
+            if events.get("xp_gained", 0) > 0:
+                print(f"[Gamification] +{events['xp_gained']} XP gained")
         
         if show_expenses:
             show_expenses()

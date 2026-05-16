@@ -2,6 +2,11 @@
 """
 Full-screen Voice Assistant page with waveform visualization,
 AI conversation, TTS speech output via Orpheus, and personalized greeting.
+
+OPTIMIZED: 
+- TTS greeting removed (instant page load)
+- TTS initialization is lazy (background thread)
+- Session guard prevents re-greeting on back-navigation
 """
 
 import flet as ft
@@ -27,15 +32,10 @@ def build_voice_assistant_content(page: ft.Page, state: dict, toast, go_back, sh
     theme = get_theme()
     voice_ai = VoiceExpenseAI(model="llama3.2")
     
-    # ── Initialize TTS engine ──
+    # ── Initialize TTS engine (lazy — availability checked in background) ──
     tts_engine = None
-    tts_ready = False
     if TTS_AVAILABLE:
         tts_engine = OrpheusTTS(voice="tara")
-        avail, err = tts_engine.check_available()
-        tts_ready = avail
-        if not avail:
-            print(f"[VoiceAssistant] TTS not available: {err}")
     
     # ── Get user info for greeting ──
     user_info = db.get_user_profile(state["user_id"]) if state.get("user_id") else None
@@ -63,7 +63,9 @@ def build_voice_assistant_content(page: ft.Page, state: dict, toast, go_back, sh
         "is_processing": False,
         "is_speaking": False,
         "animation_running": False,
-        "tts_enabled": tts_ready,  # TTS on by default if available
+        "tts_enabled": False,  # Start disabled, enable once background check passes
+        "tts_ready": False,
+        "tts_checking": True,  # Background availability check in progress
     }
     
     # ── Waveform Bars ──
@@ -113,22 +115,25 @@ def build_voice_assistant_content(page: ft.Page, state: dict, toast, go_back, sh
     
     # ── TTS toggle button ──
     tts_icon = ft.Icon(
-        ft.Icons.VOLUME_UP_ROUNDED if rec_state["tts_enabled"] else ft.Icons.VOLUME_OFF_ROUNDED,
-        color="#10B981" if rec_state["tts_enabled"] else theme.text_muted,
+        ft.Icons.HOURGLASS_EMPTY_ROUNDED,
+        color=theme.text_muted,
         size=20,
     )
     
     tts_label = ft.Text(
-        "Voice ON" if rec_state["tts_enabled"] else "Voice OFF",
+        "Checking...",
         size=9,
-        color="#10B981" if rec_state["tts_enabled"] else theme.text_muted,
+        color=theme.text_muted,
         weight=ft.FontWeight.BOLD,
     )
     
     def toggle_tts(e=None):
         """Toggle TTS on/off."""
-        if not tts_ready:
-            toast("⚠️ Orpheus TTS not available. Check Ollama.", "#EF4444")
+        if not rec_state["tts_ready"]:
+            if rec_state["tts_checking"]:
+                toast("⏳ Voice engine still loading...", "#F59E0B")
+            else:
+                toast("⚠️ Orpheus TTS not available. Check Ollama.", "#EF4444")
             return
         rec_state["tts_enabled"] = not rec_state["tts_enabled"]
         if rec_state["tts_enabled"]:
@@ -158,6 +163,81 @@ def build_voice_assistant_content(page: ft.Page, state: dict, toast, go_back, sh
         padding=ft.padding.symmetric(horizontal=8, vertical=4),
         tooltip="Toggle AI voice responses",
     )
+    
+    # ── TTS status indicator (initially shows "Checking...") ──
+    tts_status_text_val = "Checking Voice..."
+    tts_status_color = "#F59E0B"
+    
+    tts_status_badge = ft.Container(
+        content=ft.Row([
+            ft.Icon(
+                ft.Icons.HOURGLASS_EMPTY_ROUNDED,
+                color=tts_status_color,
+                size=12,
+            ),
+            ft.Text(tts_status_text_val, size=9, color=tts_status_color, weight=ft.FontWeight.W_500),
+        ], spacing=4),
+        padding=ft.padding.symmetric(horizontal=8, vertical=3),
+        border_radius=10,
+        bgcolor=f"{tts_status_color}15",
+        border=ft.border.all(1, f"{tts_status_color}30"),
+    )
+    
+    # ── Background TTS availability check ──
+    def check_tts_in_background():
+        """Check TTS availability without blocking UI."""
+        if not TTS_AVAILABLE or not tts_engine:
+            rec_state["tts_checking"] = False
+            rec_state["tts_ready"] = False
+            try:
+                tts_status_badge.content.controls[0].name = ft.Icons.VOICE_OVER_OFF_ROUNDED
+                tts_status_badge.content.controls[0].color = "#EF4444"
+                tts_status_badge.content.controls[1].value = "Voice Unavailable"
+                tts_status_badge.content.controls[1].color = "#EF4444"
+                tts_status_badge.bgcolor = "#EF444415"
+                tts_status_badge.border = ft.border.all(1, "#EF444430")
+                tts_icon.name = ft.Icons.VOLUME_OFF_ROUNDED
+                tts_label.value = "Voice OFF"
+                page.update()
+            except Exception:
+                pass
+            return
+        
+        avail, err = tts_engine.check_available()
+        rec_state["tts_checking"] = False
+        rec_state["tts_ready"] = avail
+        rec_state["tts_enabled"] = avail  # Auto-enable if available
+        
+        try:
+            if avail:
+                tts_status_badge.content.controls[0].name = ft.Icons.RECORD_VOICE_OVER_ROUNDED
+                tts_status_badge.content.controls[0].color = "#10B981"
+                tts_status_badge.content.controls[1].value = "Orpheus Voice Active"
+                tts_status_badge.content.controls[1].color = "#10B981"
+                tts_status_badge.bgcolor = "#10B98115"
+                tts_status_badge.border = ft.border.all(1, "#10B98130")
+                tts_icon.name = ft.Icons.VOLUME_UP_ROUNDED
+                tts_icon.color = "#10B981"
+                tts_label.value = "Voice ON"
+                tts_label.color = "#10B981"
+            else:
+                tts_status_badge.content.controls[0].name = ft.Icons.VOICE_OVER_OFF_ROUNDED
+                tts_status_badge.content.controls[0].color = "#EF4444"
+                tts_status_badge.content.controls[1].value = "Voice Unavailable"
+                tts_status_badge.content.controls[1].color = "#EF4444"
+                tts_status_badge.bgcolor = "#EF444415"
+                tts_status_badge.border = ft.border.all(1, "#EF444430")
+                tts_icon.name = ft.Icons.VOLUME_OFF_ROUNDED
+                tts_icon.color = theme.text_muted
+                tts_label.value = "Voice OFF"
+                tts_label.color = theme.text_muted
+                print(f"[VoiceAssistant] TTS not available: {err}")
+            page.update()
+        except Exception:
+            pass
+    
+    # Launch background TTS check (does NOT block page rendering)
+    threading.Thread(target=check_tts_in_background, daemon=True).start()
     
     # ── Confirm row (hidden until AI understands) ──
     confirm_row = ft.Row([], alignment=ft.MainAxisAlignment.CENTER, spacing=12, visible=False)
@@ -230,7 +310,7 @@ def build_voice_assistant_content(page: ft.Page, state: dict, toast, go_back, sh
     # ── Speak AI response via TTS ──
     def speak_response(text: str):
         """Speak the AI response text using Orpheus TTS in background."""
-        if not rec_state["tts_enabled"] or not tts_engine or not tts_ready:
+        if not rec_state["tts_enabled"] or not tts_engine or not rec_state["tts_ready"]:
             return
         
         # Clean text for TTS (remove emojis and special chars that confuse TTS)
@@ -437,41 +517,20 @@ def build_voice_assistant_content(page: ft.Page, state: dict, toast, go_back, sh
         add_bubble("system", f"⚠️ {dep_issues[0]}")
         status_text.value = "⚠️ Setup required — see message above"
     else:
-        greeting_msg = (
-            f"{greeting_text} {greeting_emoji}\n"
-            f"I'm your AI expense assistant.\n\n"
-            f"Just tap the mic and tell me what you spent — "
-            f"like \"I spent 500 pesos on Starbucks coffee\" and I'll handle the rest!"
-        )
-        add_bubble("ai", greeting_msg)
-        
-        # Speak the greeting!
-        if rec_state["tts_enabled"] and tts_engine:
-            greeting_speak = f"{greeting_text} I'm your AI expense assistant. Just tap the mic and tell me what you spent."
-            # Small delay to let UI render first
-            def delayed_greeting():
-                time.sleep(0.8)
-                speak_response(greeting_speak)
-            threading.Thread(target=delayed_greeting, daemon=True).start()
-    
-    # ── TTS status indicator ──
-    tts_status_text = "Orpheus Voice Active" if tts_ready else "Voice Unavailable"
-    tts_status_color = "#10B981" if tts_ready else "#EF4444"
-    
-    tts_status_badge = ft.Container(
-        content=ft.Row([
-            ft.Icon(
-                ft.Icons.RECORD_VOICE_OVER_ROUNDED if tts_ready else ft.Icons.VOICE_OVER_OFF_ROUNDED,
-                color=tts_status_color,
-                size=12,
-            ),
-            ft.Text(tts_status_text, size=9, color=tts_status_color, weight=ft.FontWeight.W_500),
-        ], spacing=4),
-        padding=ft.padding.symmetric(horizontal=8, vertical=3),
-        border_radius=10,
-        bgcolor=f"{tts_status_color}15",
-        border=ft.border.all(1, f"{tts_status_color}30"),
-    )
+        # Show text greeting only (NO TTS greeting — eliminates delay)
+        # Only show if not already shown in this session (prevents re-greeting on back-nav)
+        if not state.get("_voice_greeting_shown"):
+            greeting_msg = (
+                f"{greeting_text} {greeting_emoji}\n"
+                f"I'm your AI expense assistant.\n\n"
+                f"Just tap the mic and tell me what you spent — "
+                f"like \"I spent 500 pesos on Starbucks coffee\" and I'll handle the rest!"
+            )
+            add_bubble("ai", greeting_msg)
+            state["_voice_greeting_shown"] = True
+        else:
+            # Returning to voice assistant — show a shorter message
+            add_bubble("ai", "Welcome back! 🎤 Tap the mic to add another expense.")
     
     # ══════════ BUILD UI ══════════
     

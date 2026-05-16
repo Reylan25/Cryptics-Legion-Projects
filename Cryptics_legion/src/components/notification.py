@@ -124,29 +124,61 @@ class NotificationHistory:
 class ImmersiveNotification:
     """
     Beautiful, immersive notification system with animations and icons.
-    Supports success, error, warning, and info notification types.
+    Supports success, error, warning, info, and critical notification types.
     """
+    
+    # Class-level state to manage stacked notifications across instances
+    _container = None
+    _banner_area = None
     
     def __init__(self, page: ft.Page):
         self.page = page
-        self.notification_queue = []
-        self.current_notification = None
+        self._init_container()
         
+    def _init_container(self):
+        if ImmersiveNotification._container is None or ImmersiveNotification._banner_area not in self.page.overlay:
+            # Recreate container if it's missing from overlay (e.g. after page clean)
+            ImmersiveNotification._container = ft.Column(
+                spacing=10,
+                alignment=ft.MainAxisAlignment.START,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+            
+            # Create a banner area at top-center using a Row to prevent blocking clicks below
+            row_container = ft.Row(
+                controls=[ImmersiveNotification._container],
+                alignment=ft.MainAxisAlignment.CENTER,
+            )
+            # Add top margin by wrapping the Row in a Container that only takes needed space
+            ImmersiveNotification._banner_area = ft.Container(
+                content=row_container,
+                padding=ft.padding.only(top=20),
+                height=150, # Constrain height to prevent blocking clicks on the bottom nav bar
+                alignment=ft.alignment.top_center,
+            )
+            self.page.overlay.append(ImmersiveNotification._banner_area)
+            
     def show(
         self, 
         message: str, 
-        type: Literal["success", "error", "warning", "info"] = "success",
+        type: Literal["success", "error", "warning", "info", "critical"] = "success",
         duration: int = 3000,
-        title: str = None
+        title: str = None,
+        persistent: bool = False,
+        action_label: str = None,
+        action_callback = None
     ):
         """
         Show an immersive notification.
         
         Args:
             message: The notification message
-            type: Type of notification (success, error, warning, info)
+            type: Type of notification (success, error, warning, info, critical)
             duration: Duration in milliseconds (default 3000)
             title: Optional title for the notification
+            persistent: If True, notification will not auto-hide
+            action_label: Optional label for an action button
+            action_callback: Optional callback for the action button
         """
         
         # Define notification styles based on type
@@ -157,6 +189,7 @@ class ImmersiveNotification:
                 "icon_color": "#FFFFFF",
                 "title": title or "Success",
                 "gradient": ["#10B981", "#059669"],
+                "pulse": False,
             },
             "error": {
                 "bg_color": "#EF4444",
@@ -164,6 +197,7 @@ class ImmersiveNotification:
                 "icon_color": "#FFFFFF",
                 "title": title or "Error",
                 "gradient": ["#EF4444", "#DC2626"],
+                "pulse": False,
             },
             "warning": {
                 "bg_color": "#F59E0B",
@@ -171,6 +205,7 @@ class ImmersiveNotification:
                 "icon_color": "#FFFFFF",
                 "title": title or "Warning",
                 "gradient": ["#F59E0B", "#D97706"],
+                "pulse": False,
             },
             "info": {
                 "bg_color": "#3B82F6",
@@ -178,10 +213,22 @@ class ImmersiveNotification:
                 "icon_color": "#FFFFFF",
                 "title": title or "Info",
                 "gradient": ["#3B82F6", "#2563EB"],
+                "pulse": False,
+            },
+            "critical": {
+                "bg_color": "#DC2626",
+                "icon": ft.Icons.REPORT_ROUNDED,
+                "icon_color": "#FFFFFF",
+                "title": title or "CRITICAL ALERT",
+                "gradient": ["#EF4444", "#991B1B"],
+                "pulse": True,
             },
         }
         
         style = styles.get(type, styles["success"])
+        
+        # Ensure container is ready
+        self._init_container()
         
         # Add to notification history
         NotificationHistory.add_notification(
@@ -191,56 +238,95 @@ class ImmersiveNotification:
             timestamp=datetime.now()
         )
         
+        # Action button (if provided)
+        action_row = []
+        if action_label and action_callback:
+            def on_action_click(e):
+                action_callback()
+                self._hide_notification(notification_container)
+                
+            action_btn = ft.Container(
+                content=ft.Text(action_label, size=11, weight=ft.FontWeight.BOLD, color=style["bg_color"]),
+                bgcolor="#FFFFFF",
+                border_radius=8,
+                padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                on_click=on_action_click,
+                ink=True,
+            )
+            action_row = [ft.Container(height=4), action_btn]
+        
+        content_col = ft.Column(
+            controls=[
+                ft.Text(
+                    style["title"],
+                    size=14,
+                    weight=ft.FontWeight.BOLD,
+                    color="#FFFFFF",
+                ),
+                ft.Text(
+                    message,
+                    size=12,
+                    color="#FFFFFF",
+                    opacity=0.9,
+                ),
+            ] + action_row,
+            spacing=2,
+            tight=True,
+        )
+        
+        # Icon container
+        icon_container = ft.Container(
+            content=ft.Icon(
+                style["icon"],
+                size=28,
+                color=style["icon_color"],
+            ),
+            width=50,
+            height=50,
+            border_radius=25,
+            bgcolor=f"{style['bg_color']}30",
+            alignment=ft.alignment.center,
+        )
+        
+        # Pulse animation for critical alerts
+        if style.get("pulse"):
+            icon_container.animate_scale = ft.Animation(500, ft.AnimationCurve.EASE_IN_OUT)
+            
+            def pulse_animation():
+                import time
+                scale_up = True
+                # Run while the notification is still in the DOM
+                while notification_container in ImmersiveNotification._container.controls:
+                    icon_container.scale = 1.15 if scale_up else 1.0
+                    try:
+                        self.page.update()
+                    except:
+                        break
+                    scale_up = not scale_up
+                    time.sleep(0.5)
+            
+            import threading
+            threading.Thread(target=pulse_animation, daemon=True).start()
+            
         # Create notification container
         notification_container = ft.Container(
             content=ft.Row(
                 controls=[
-                    # Icon
+                    icon_container,
                     ft.Container(
-                        content=ft.Icon(
-                            style["icon"],
-                            size=28,
-                            color=style["icon_color"],
-                        ),
-                        width=50,
-                        height=50,
-                        border_radius=25,
-                        bgcolor=f"{style['bg_color']}30",
-                        alignment=ft.alignment.center,
-                    ),
-                    # Message content
-                    ft.Container(
-                        content=ft.Column(
-                            controls=[
-                                ft.Text(
-                                    style["title"],
-                                    size=14,
-                                    weight=ft.FontWeight.BOLD,
-                                    color="#FFFFFF",
-                                ),
-                                ft.Text(
-                                    message,
-                                    size=12,
-                                    color="#FFFFFF",
-                                    opacity=0.9,
-                                ),
-                            ],
-                            spacing=2,
-                            tight=True,
-                        ),
+                        content=content_col,
                         expand=True,
                     ),
-                    # Close button
                     ft.IconButton(
                         icon=ft.Icons.CLOSE,
                         icon_size=18,
                         icon_color="#FFFFFF",
-                        on_click=lambda e: self._hide_notification(),
+                        on_click=lambda e: self._hide_notification(notification_container),
                         tooltip="Close",
                     ),
                 ],
                 alignment=ft.MainAxisAlignment.START,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                vertical_alignment=ft.CrossAxisAlignment.START if action_row else ft.CrossAxisAlignment.CENTER,
                 spacing=12,
             ),
             bgcolor=style["bg_color"],
@@ -263,18 +349,8 @@ class ImmersiveNotification:
             opacity=0,
         )
         
-        # Create banner at the top of the page
-        banner = ft.Container(
-            content=notification_container,
-            alignment=ft.alignment.top_center,
-            padding=ft.padding.only(top=20),
-        )
-        
-        # Store reference
-        self.current_notification = banner
-        
-        # Add to page overlay
-        self.page.overlay.append(banner)
+        # Add to stack
+        ImmersiveNotification._container.controls.append(notification_container)
         self.page.update()
         
         # Animate in
@@ -282,34 +358,48 @@ class ImmersiveNotification:
         notification_container.opacity = 1
         self.page.update()
         
-        # Auto-hide after duration
-        import threading
-        def auto_hide():
-            import time
-            time.sleep(duration / 1000)
-            self._hide_notification()
-        
-        threading.Thread(target=auto_hide, daemon=True).start()
+        # Auto-hide after duration if not persistent
+        if not persistent:
+            import threading
+            def auto_hide():
+                import time
+                time.sleep(duration / 1000)
+                self._hide_notification(notification_container)
+            
+            threading.Thread(target=auto_hide, daemon=True).start()
     
-    def _hide_notification(self):
-        """Hide the current notification with animation."""
-        if self.current_notification and len(self.page.overlay) > 0:
+    def _hide_notification(self, notification_container):
+        """Hide a specific notification with animation."""
+        if ImmersiveNotification._container and notification_container in ImmersiveNotification._container.controls:
             try:
-                notification_container = self.current_notification.content
-                
                 # Animate out
                 notification_container.offset = (-2, 0)
                 notification_container.opacity = 0
                 self.page.update()
                 
-                # Remove after animation
+                # Remove after animation completes
+                import time
+                time.sleep(0.3)
+                
+                if notification_container in ImmersiveNotification._container.controls:
+                    ImmersiveNotification._container.controls.remove(notification_container)
+                    
+                    # Prevent the invisible overlay container from blocking clicks by removing it when empty
+                    if len(ImmersiveNotification._container.controls) == 0:
+                        if ImmersiveNotification._banner_area and ImmersiveNotification._banner_area in self.page.overlay:
+                            self.page.overlay.remove(ImmersiveNotification._banner_area)
+                            ImmersiveNotification._banner_area = None
+                            ImmersiveNotification._container = None
+                            
+                    self.page.update()
+            except Exception as e:
+                print(f"Error hiding notification: {e}")
                 import threading
                 def remove():
                     import time
                     time.sleep(0.3)
-                    if self.current_notification in self.page.overlay:
-                        self.page.overlay.remove(self.current_notification)
-                        self.current_notification = None
+                    if notification_container in ImmersiveNotification._container.controls:
+                        ImmersiveNotification._container.controls.remove(notification_container)
                         self.page.update()
                 
                 threading.Thread(target=remove, daemon=True).start()
@@ -393,6 +483,12 @@ def show_info_notification(page: ft.Page, message: str, title: str = None):
     """Quick helper to show info notification."""
     notif = ImmersiveNotification(page)
     notif.show(message, "info", title=title)
+
+
+def show_critical_notification(page: ft.Page, message: str, title: str = None, action_label: str = None, action_callback = None):
+    """Quick helper to show critical notification that persists."""
+    notif = ImmersiveNotification(page)
+    notif.show(message, "critical", title=title, persistent=True, action_label=action_label, action_callback=action_callback)
 
 
 class NotificationCenter:
