@@ -1,5 +1,5 @@
 # Utils module exports
-from utils.statistics import (
+from .statistics import (
     get_expense_summary,
     get_expense_summary_by_period,
     get_daily_expenses,
@@ -14,7 +14,7 @@ from utils.statistics import (
     create_bar_chart_data,
 )
 
-from utils.currency import (
+from .currency import (
     format_currency,
     format_currency_short,
     format_currency_with_context,

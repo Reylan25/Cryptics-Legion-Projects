@@ -11,9 +11,9 @@ python-dotenv==1.0.0
 # HTTP Requests
 requests==2.31.0
  
-# Database
-# SQLite3 is included with Python
- 
+# Speech Recognition
+SpeechRecognition==3.16.1
+
 # Testing
 pytest==7.4.3
 pytest-cov==4.1.0
